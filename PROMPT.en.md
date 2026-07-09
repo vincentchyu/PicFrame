@@ -1,0 +1,479 @@
+# Photography Info Card Generation Prompt
+
+This document defines the design and implementation constraints for `generate_xhs_photo_cards.py`. Chinese version: [PROMPT.md](/Users/vincent/Developer/code/python_code/PicFrame34/PROMPT.md).
+
+The project is inspired by the Guizang social card workflow: the output should read as a polished, publishable social-media image, not a raw EXIF dump. `template.png` is a layout reference, not a pixel-perfect template.
+
+## Goal
+
+For every image in a chosen source folder, generate one finished photography information card in that folder's `PicFrame34/` output folder.
+
+The card should:
+
+- Show the photo prominently.
+- Preserve the photo's original aspect ratio.
+- Display camera, exposure, lens, GPS, altitude, and copyright metadata cleanly.
+- Use the photo itself to derive a soft background color.
+- Feel quiet, precise, and product-card-like.
+- Avoid text overlap, overflow, and decorative noise.
+- Keep gear text as supporting information, never the primary visual.
+
+## Platform
+
+- Target platform: Xiaohongshu / Rednote
+- Default output ratio: `3:4`
+- Default output size: `1080 x 1440`
+- When the source image is portrait (`width < height`) and `landscape` is selected, output ratio is `4:3` and output size is `1440 x 1080`
+- Output format: PNG cards plus a JPEG contact sheet
+
+## Source Folder Contract
+
+Default source folder:
+
+```text
+<source>/
+├── DSC_0001.jpg
+├── DSC_0002.png
+└── PicFrame34/
+```
+
+The script should create `PicFrame34/` automatically if it does not exist.
+
+The default executable behavior is:
+
+- Running `python3 generate_xhs_photo_cards.py` opens a terminal UI for choosing the source folder.
+- Running `python3 generate_xhs_photo_cards.py --source <source>` processes that source folder without the TUI.
+- Running `python3 generate_xhs_photo_cards.py --source <source> --layout landscape` applies the landscape presentation only to source images whose width is less than their height.
+- Running `python3 generate_xhs_photo_cards.py --legacy-task <task>` keeps the old compatibility behavior: read `<task>/src/` and write `<task>/result/`.
+
+Supported source extensions:
+
+- `.jpg`
+- `.jpeg`
+- `.png`
+- `.tif`
+- `.tiff`
+
+## Assets
+
+Camera and lens product PNGs are looked up in this order:
+
+1. The task folder's `assets/gear/`
+2. The task folder
+3. The built-in `assets/gear/`
+4. The script folder
+
+Current built-in assets:
+
+```text
+assets/gear/default-camera.png
+assets/gear/default-lens.png
+assets/gear/Z6III.png
+assets/gear/NIKKOR Z 24-120mm f4 S.png
+assets/gear/NIKKOR Z 35mm f1.8 S.png
+```
+
+Camera and lens mappings are maintained in the global `config/gear_assets.json` file. Current config:
+
+```json
+{
+  "defaults": {
+    "camera": "../assets/gear/default-camera.png",
+    "lens": "../assets/gear/default-lens.png"
+  },
+  "cameras": {
+    "NIKON Z6_3": "../assets/gear/Z6III.png",
+    "Nikon Z6III": "../assets/gear/Z6III.png"
+  },
+  "lenses": {
+    "NIKKOR Z 24-120mm f/4 S": "../assets/gear/NIKKOR Z 24-120mm f4 S.png",
+    "NIKKOR Z 35mm f/1.8 S": "../assets/gear/NIKKOR Z 35mm f1.8 S.png"
+  }
+}
+```
+
+If the camera or lens cannot be matched:
+
+- Print a warning.
+- Use a default camera PNG.
+- Use a default lens PNG.
+- Do not fail the whole batch.
+- Add future model support in `config/gear_assets.json` and place PNGs in `assets/gear/`, not as hard-coded Python mappings.
+- iPhone `LensModel` / `LensID` values may look like `iPhone 14 Pro back triple camera 6.86mm f/1.78`; asset matching should also try the module-level key `iPhone 14 Pro back triple camera`, while the displayed lens text keeps the full focal length and aperture.
+
+## Layout
+
+The layout is deterministic and should not resize itself based on text length.
+
+Canvas:
+
+```text
+default: 1080 x 1440
+portrait source + landscape layout: 1440 x 1080
+```
+
+Main photo:
+
+- Default layout uses a fixed top photo frame.
+- Only when the source image is portrait and `landscape` is selected, use a fixed left photo frame with the info column on the right.
+- Preserve source aspect ratio.
+- Use contain-fit.
+- Do not stretch.
+- Do not crop just to fill the frame.
+- Default layout rounds the top photo corners.
+- Portrait-source landscape presentation rounds all four photo corners.
+
+Outer card:
+
+- Rounded card on a light page background.
+- Soft shadow.
+- Card background is generated from the photo.
+
+Info area:
+
+- Starts below the main photo.
+- Split into two fixed zones: camera zone and lens zone.
+- Camera and lens product images have fixed positions.
+- Camera text and lens text have fixed starting positions.
+- Exposure parameters must never push the lens zone downward.
+- Gear typography should stay restrained and should not become a title.
+
+## Camera Zone
+
+Right side content:
+
+```text
+Camera model
+Exposure parameters
+```
+
+Camera model examples:
+
+```text
+Nikon Z6III
+iPhone 13 Pro
+```
+
+Exposure parameters may include:
+
+- Format, when useful and not redundant
+- Aperture
+- Shutter speed
+- ISO
+- Focal length
+- Exposure compensation
+- White balance
+
+Rules:
+
+- Hide missing fields.
+- If there are many fields, compact them into fewer rows.
+- Use ` | ` to combine short parameters on one line.
+- The camera model may be slightly stronger than the parameters, but it remains supporting information.
+
+Example:
+
+```text
+F5.6 | 1/30
+ISO 6400 | 34mm
+Auto
+```
+
+## Lens Zone
+
+Right side content:
+
+```text
+Lens family
+Lens parameters
+```
+
+Lens field priority:
+
+1. `LensModel`
+2. `LensID`
+3. `Lens`
+
+Hard constraints for lens text parsing:
+
+- Do not hard-code the lens family as `Nikon`.
+- Do not strip `NIKKOR Z` bluntly.
+- In the complete lens string, find the focal-length number before `mm`.
+- Everything before that focal-length number is the lens family and belongs on the family line.
+- Everything from that focal-length number to the end is the lens parameters and belongs on the parameter line.
+- If the parameters contain an independent `S`, render that `S` in a heavier weight because it identifies Nikon S-Line high-quality lenses.
+
+Examples:
+
+```text
+LensID: iPhone 13 Pro back triple camera 9mm f/2.8
+Lens family: iPhone 13 Pro back triple camera
+Lens parameters: 9mm f/2.8
+
+LensID: NIKKOR Z 24-120mm f/4 S
+Lens family: NIKKOR Z
+Lens parameters: 24-120mm f/4 S
+```
+
+Layout rules:
+
+- Keep lens text aligned with the lens product image zone.
+- Wrap long lens names.
+- Limit lens text to a controlled number of lines.
+- Do not allow lens text to overflow outside the right text column.
+- Lens family text should be smaller than the camera model to avoid stealing attention from the photo.
+
+## GPS Capsule
+
+If EXIF GPS data exists, show it in a small capsule at the top center of the canvas.
+
+Format:
+
+```text
+23°09'N 113°16'E
+23°09'N 113°16'E · 1018m
+```
+
+Rules:
+
+- Convert EXIF GPS values to degree/minute notation.
+- Use `N/S/E/W`.
+- Do not show raw decimal numbers.
+- If `GPSAltitude` or `Altitude` exists, append altitude in `m`.
+- Altitude is shown as whole meters, for example `1018m`.
+- Support below-sea-level altitude as a negative value.
+- Do not place GPS text on top of the photo.
+- Use a light capsule background derived from the card background.
+- Keep it visually related to the bottom copyright capsule while staying subtle.
+- If GPS is missing, omit this capsule entirely.
+
+## Copyright Capsule
+
+Show a bottom-center capsule:
+
+```text
+© <year> Vincent Chyu PHOTOGRAPHY - All rights reserved
+```
+
+Rules:
+
+- `<year>` is read from EXIF capture date when possible.
+- Preferred fields:
+  - `DateTimeOriginal`
+  - `CreateDate`
+  - `SubSecDateTimeOriginal`
+  - `ModifyDate`
+- If no year is found, use a conservative fallback.
+- Use a light capsule background derived from the card background.
+- Keep the capsule visually related to the GPS capsule.
+- Do not let the capsule touch the canvas edge or get clipped.
+
+## EXIF
+
+Read EXIF with:
+
+```bash
+exiftool -json <image>
+```
+
+Camera fields:
+
+- `CameraModelName`
+- `Model`
+- `Make`
+
+Lens fields:
+
+- `LensModel`
+- `LensID`
+- `Lens`
+
+Exposure fields:
+
+- `Format`
+- `FNumber`
+- `Aperture`
+- `ExposureTime`
+- `ShutterSpeed`
+- `ISO`
+- `FocalLength`
+- `ExposureCompensation`
+- `WhiteBalance`
+
+GPS fields:
+
+- `GPSLatitude`
+- `GPSLongitude`
+- `GPSLatitudeRef`
+- `GPSLongitudeRef`
+- `GPSPosition`
+- `GPSAltitude`
+- `GPSAltitudeRef`
+- `Altitude`
+
+Date fields:
+
+- `DateTimeOriginal`
+- `CreateDate`
+- `SubSecDateTimeOriginal`
+- `ModifyDate`
+
+## Background Color
+
+Generate the card background from the source photo.
+
+Algorithm:
+
+1. Open the source photo as RGB.
+2. Downsample for speed.
+3. Ignore the outer 5% edges.
+4. Cluster sampled pixels into a small number of color groups.
+5. Pick the dominant group.
+6. Convert to HLS.
+7. Raise lightness into a soft UI range.
+8. Reduce saturation.
+9. Use the result as the card background.
+
+The background should feel related to the photo but should not be a raw dominant color.
+
+## Color Management
+
+Preserve source color behavior.
+
+Rules:
+
+- If the source image has an embedded ICC profile, save the output with that ICC profile.
+- If the source image is tagged as sRGB but does not embed an ICC profile, save with the system sRGB profile when available.
+- On macOS, prefer:
+
+```text
+/System/Library/ColorSync/Profiles/sRGB Profile.icc
+```
+
+Expected sRGB output profile description:
+
+```text
+sRGB IEC61966-2.1
+```
+
+The contact sheet should inherit the first generated card's ICC profile.
+
+## Typography
+
+Use explicit font face indices. Do not rely on the first face in a `.ttc` file.
+
+Preferred macOS font:
+
+```text
+Avenir Next.ttc
+```
+
+Face indices:
+
+```text
+Regular -> index 7
+Medium  -> index 5
+```
+
+Fallbacks:
+
+- Helvetica Neue
+- SFNS
+- Arial
+- DejaVu Sans
+
+Reason:
+
+Some `.ttc` collections load a bold face by default. Explicit indices keep the typography stable.
+
+Style:
+
+- Camera and lens family text may use Medium, but their sizes should stay restrained.
+- Parameters use Regular.
+- An independent `S` in lens parameters may use Medium for emphasis.
+- Avoid monospaced English for this card.
+- Keep text calm and readable.
+- Gear information must serve the photo, not compete with it.
+
+## Text Safety
+
+Non-negotiable:
+
+- No text overlap.
+- No text should enter another fixed zone.
+- No text should touch the edge.
+- Long lens names must wrap or truncate.
+- Exposure fields should compact before they push the lens zone.
+- The bottom copyright capsule must not collide with the card shadow or canvas edge.
+
+## Contact Sheet
+
+After generating all cards, also create:
+
+```text
+PicFrame34/contact-sheet.jpg
+```
+
+Rules:
+
+- Use small thumbnails.
+- Include file labels.
+- Keep it lightweight enough for quick review.
+- Preserve an ICC profile when available.
+
+## Adapted Guizang Social Card Principles
+
+Only the relevant principles are adopted:
+
+- Expression comes first; the card should communicate clearly in one glance.
+- Use real photo evidence, not decorative filler.
+- Avoid random ornaments, stickers, blobs, or meaningless shapes.
+- Do not use nested cards.
+- Do not let text overflow or collide.
+- For 3:4 cards, fill the canvas with useful visual information.
+- Show rendered outputs quickly, then iterate visually.
+
+This project does not copy the Guizang skill templates. It uses the social-card design discipline as a reference while keeping the implementation as a Python image-generation utility.
+
+## Code Structure
+
+`generate_xhs_photo_cards.py` is only the executable entry point. Do not keep adding rendering, EXIF, or TUI logic to it. The implementation lives in the `core/` package:
+
+- `core/cli.py`: command-line arguments, default TUI launch, and error exits.
+- `core/tui.py`: standard-library `curses` folder picker, layout picker, progress screens, and readable errors.
+- `core/batch.py`: source scanning, output folder selection, batch generation, and legacy task compatibility.
+- `core/rendering.py`: Pillow/numpy rendering core, layouts, rounded masks, text drawing, and contact sheets.
+- `core/metadata.py`: EXIF, GPS, altitude, lens text parsing, and ICC profiles.
+- `core/assets.py`: `config/gear_assets.json` plus camera/lens PNG lookup.
+- `core/fonts.py`: font lookup, `.ttc` face indices, and `font()`.
+- `core/config.py`: project paths, canvas sizes, extensions, and layout constants.
+- `core/utils.py`: small stateless helpers.
+
+Modification rules:
+
+- CLI/TUI changes should not touch the rendering core unless required.
+- Layout or image-generation changes should usually stay in `rendering.py`.
+- EXIF, GPS, ICC, and lens parsing changes should usually stay in `metadata.py`.
+- Asset lookup or model mapping changes should usually stay in `assets.py` and `config/gear_assets.json`.
+- Keep `generate_xhs_photo_cards.py` as a thin entry point instead of letting it grow back into a thousand-line script.
+
+## Verification Checklist
+
+Before considering a change complete:
+
+- Run the script on a real folder.
+- Open at least one landscape photo result.
+- Open at least one portrait photo result if available.
+- Confirm output size is `1080 x 1440`.
+- Confirm the main photo ratio is preserved.
+- Confirm camera and lens zones stay fixed.
+- Confirm long exposure parameters compact with ` | `.
+- Confirm long lens text wraps safely.
+- Confirm LensID examples split correctly into family and parameters.
+- Confirm independent `S` in the parameters is rendered in a heavier weight.
+- Confirm GPS appears only when GPS exists.
+- Confirm altitude is appended to the GPS capsule when available.
+- Confirm copyright year matches EXIF when available.
+- Confirm output ICC profile is preserved or set to sRGB.
+- Confirm `PicFrame34/contact-sheet.jpg` exists for default source-folder runs.
+- Confirm `result/contact-sheet.jpg` exists for explicit `--legacy-task` compatibility runs.
