@@ -1,41 +1,150 @@
 import colorsys
-import re
-
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-from .config import CANVAS_H, CANVAS_W, CARD_R, INFO_Y, LAYOUTS, OUTER_PAD, PHOTO_H, PHOTO_W, PHOTO_X, PHOTO_Y
+
+def dominant_bg(path):
+    """公共核心函数：根据图像像素分布主色提取软卡片背景色。"""
+    with Image.open(path) as img:
+        img.draft("RGB", (220, 220))
+        img = img.convert("RGB")
+        img.thumbnail((220, 220), Image.Resampling.BOX)
+        arr = np.asarray(img).astype(np.float32)
+        h, w, _ = arr.shape
+        pixels = arr[int(h * 0.05):int(h * 0.95), int(w * 0.05):int(w * 0.95)].reshape(-1, 3)
+        if len(pixels) > 2000:
+            pixels = pixels[np.linspace(0, len(pixels) - 1, 2000).astype(int)]
+
+        centers = np.quantile(pixels, np.linspace(0.12, 0.88, 5), axis=0)
+        labels = np.zeros(len(pixels), dtype=np.int64)
+        for _ in range(8):
+            dist = ((pixels[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)
+            labels = dist.argmin(axis=1)
+            centers = np.array([
+                pixels[labels == i].mean(axis=0) if np.any(labels == i) else centers[i]
+                for i in range(5)
+            ])
+
+        rgb = centers[np.bincount(labels, minlength=5).argmax()] / 255.0
+        hue, light, sat = colorsys.rgb_to_hls(*rgb)
+        light = min(max(light, 0.78), 0.9)
+        sat = min(sat * 0.32, 0.16)
+        return tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(hue, light, sat))
+
+
+from .config import CARD_R, OUTER_PAD
+from .context import RendererContext
 from .fonts import font
-from .metadata import (
-    fmt_ev,
-    fmt_f_number,
-    fmt_focal,
-    fmt_gps,
-    fmt_model,
-    lens_asset_keys,
-    photo_year,
-    run_exif,
-    source_icc_profile,
-    split_lens_display_name,
-)
-from .utils import unique_values
+from .metadata import source_icc_profile
+from .renderer import load_renderer
 
 
-def rounded_rect_mask(size, radius, scale=4):
-    scaled_size = (size[0] * scale, size[1] * scale)
-    mask = Image.new("L", scaled_size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, scaled_size[0], scaled_size[1]),
-        radius=radius * scale,
-        fill=255,
-    )
-    return mask.resize(size, Image.Resampling.LANCZOS)
+RenderContext = RendererContext
+
+
+def rounded_rect_mask(size, radius, scale=None):
+    return selective_rounded_mask(size, radius, {"tl", "tr", "bl", "br"}, scale=scale)
+
 
 
 def contain_fit(img, w, h):
     scale = min(w / img.width, h / img.height)
     nw, nh = round(img.width * scale), round(img.height * scale)
     return img.resize((nw, nh), Image.Resampling.LANCZOS)
+
+
+def blend_rgb(a, b, t):
+    """将两个 RGB 元组按比例 t 线性插值（LERP）。t=0 返回 a，t=1 返回 b。"""
+    return tuple(round(a[i] * (1 - t) + b[i] * t) for i in range(3))
+
+
+def resize_by_width(image, width):
+    """等比例缩放图像到指定宽度。"""
+    old_width, height = image.size
+    new_height = round(height * width / old_width)
+    return image.resize((width, new_height), Image.Resampling.LANCZOS)
+
+
+def resize_by_height(image, height):
+    """等比例缩放图像到指定高度。"""
+    width, old_height = image.size
+    new_width = round(width * height / old_height)
+    return image.resize((new_width, height), Image.Resampling.LANCZOS)
+
+
+def pad_image(image, padding_size, sides="tb", color=(0, 0, 0, 0)):
+    """在图像的指定边（t/b/l/r 任意组合）添加空白 padding。
+
+    Args:
+        image: PIL Image 对象。
+        padding_size: 各边添加的像素大小。
+        sides: 字符串，包含要添加 padding 的边：'t'（上）、'b'（下）、'l'（左）、'r'（右）。
+        color: 填充颜色，默认透明。
+    """
+    total_width, total_height = image.size
+    x_offset, y_offset = 0, 0
+    if "t" in sides:
+        total_height += padding_size
+        y_offset += padding_size
+    if "b" in sides:
+        total_height += padding_size
+    if "l" in sides:
+        total_width += padding_size
+        x_offset += padding_size
+    if "r" in sides:
+        total_width += padding_size
+    output = Image.new(image.mode, (total_width, total_height), color)
+    output.paste(image, (x_offset, y_offset))
+    return output
+
+
+def create_text_image(content, font_obj, fill="black", transparent_color=(0, 0, 0, 0)):
+    """公共核心函数：将文本内容渲染为透明背景的 Image 对象。"""
+    if not content:
+        content = "   "
+    _, _, text_width, text_height = font_obj.getbbox(content)
+    image = Image.new("RGBA", (max(1, text_width), max(1, text_height)), color=transparent_color)
+    ImageDraw.Draw(image).text((0, 0), content, fill=fill, font=font_obj)
+    return image
+
+
+def concatenate_images(images, align="left", transparent_color=(0, 0, 0, 0)):
+    """公共核心函数：纵向拼接多个 Image 图像块，支持 left / center / right 对齐。"""
+    if not images:
+        return Image.new("RGBA", (1, 1), transparent_color)
+    widths, heights = zip(*(image.size for image in images))
+    output = Image.new("RGBA", (max(widths), sum(heights)), color=transparent_color)
+    y_offset = 0
+    for image in images:
+        x_offset = 0
+        if align == "center":
+            x_offset = int((output.width - image.width) / 2)
+        elif align == "right":
+            x_offset = output.width - image.width
+        output.paste(image, (x_offset, y_offset))
+        y_offset += image.height
+    return output
+
+
+def arrange_images_side(background, images, side="left", padding=200, is_start=False):
+    """公共核心函数：沿左右侧排列并按背景高度自动比例缩放粘贴 Image 列表。"""
+    if side == "right":
+        x_offset = background.width - padding if is_start else background.width
+        for image in reversed(images):
+            if image is None:
+                continue
+            fitted = resize_by_height(image, background.height)
+            x_offset -= fitted.width
+            x_offset -= padding
+            background.paste(fitted, (x_offset, 0))
+    else:
+        x_offset = padding if is_start else 0
+        for image in images:
+            if image is None:
+                continue
+            fitted = resize_by_height(image, background.height)
+            background.paste(fitted, (x_offset, 0))
+            x_offset += fitted.width + padding
 
 
 def is_portrait_photo(path):
@@ -47,7 +156,30 @@ def top_rounded_mask(size, radius):
     return selective_rounded_mask(size, radius, {"tl", "tr"})
 
 
-def selective_rounded_mask(size, radius, corners, scale=4):
+def selective_rounded_mask(size, radius, corners, scale=None):
+    if scale is None:
+        min_dim = min(size)
+        if min_dim >= 2000:
+            scale = 1
+        elif min_dim >= 1000:
+            scale = 2
+        else:
+            scale = 4
+
+    if scale == 1:
+        mask = Image.new("L", size, 0)
+        draw = ImageDraw.Draw(mask)
+        draw.rounded_rectangle((0, 0, size[0], size[1]), radius=radius, fill=255)
+        if "tl" not in corners:
+            draw.rectangle((0, 0, radius, radius), fill=255)
+        if "tr" not in corners:
+            draw.rectangle((size[0] - radius, 0, size[0], radius), fill=255)
+        if "bl" not in corners:
+            draw.rectangle((0, size[1] - radius, radius, size[1]), fill=255)
+        if "br" not in corners:
+            draw.rectangle((size[0] - radius, size[1] - radius, size[0], size[1]), fill=255)
+        return mask
+
     scaled_size = (size[0] * scale, size[1] * scale)
     scaled_radius = radius * scale
     mask = Image.new("L", scaled_size, 0)
@@ -64,7 +196,9 @@ def selective_rounded_mask(size, radius, corners, scale=4):
             (scaled_size[0] - scaled_radius, scaled_size[1] - scaled_radius, scaled_size[0], scaled_size[1]),
             fill=255,
         )
-    return mask.resize(size, Image.Resampling.LANCZOS)
+    resample_filter = Image.Resampling.BOX if scale == 2 else Image.Resampling.LANCZOS
+    return mask.resize(size, resample_filter)
+
 
 
 def paste_contained(dst, src, box, top_radius=0, rounded_corners=None, align_x="center", align_y="center"):
@@ -92,271 +226,6 @@ def paste_contained(dst, src, box, top_radius=0, rounded_corners=None, align_x="
     return (x, y, fitted.width, fitted.height)
 
 
-def blend_rgb(a, b, t):
-    return tuple(round(a[i] * (1 - t) + b[i] * t) for i in range(3))
-
-
-def draw_top_gps(canvas, text, bg):
-    if not text:
-        return
-    canvas_w, _ = canvas.size
-    f = font(19, False)
-    overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    bbox = draw.textbbox((0, 0), text, font=f)
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
-    pad_x = 15
-    pill_h = 31
-    pill_w = text_w + pad_x * 2
-    pill_x = round((canvas_w - pill_w) / 2)
-    pill_y = 19
-    fill = (*blend_rgb(bg, (255, 255, 255), 0.34), 160)
-    draw.rounded_rectangle(
-        (pill_x, pill_y, pill_x + pill_w, pill_y + pill_h),
-        radius=11,
-        fill=fill,
-        outline=(*blend_rgb(bg, (255, 255, 255), 0.55), 90),
-        width=1,
-    )
-    tx = pill_x + pad_x - bbox[0]
-    ty = pill_y + round((pill_h - text_h) / 2) - bbox[1] - 1
-    draw.text((tx, ty), text, fill=(45, 45, 45, 118), font=f)
-    canvas.alpha_composite(overlay)
-
-
-def draw_copyright_overlay(canvas, text, bg):
-    if not text:
-        return
-    canvas_w, canvas_h = canvas.size
-    f = font(18, True)
-    overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    bbox = draw.textbbox((0, 0), text, font=f)
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
-    pad_x = 18
-    pill_h = 35
-    pill_w = text_w + pad_x * 2
-    pill_x = round((canvas_w - pill_w) / 2)
-    pill_y = canvas_h - 45
-    fill = (*blend_rgb(bg, (255, 255, 255), 0.34), 210)
-    draw.rounded_rectangle(
-        (pill_x, pill_y, pill_x + pill_w, pill_y + pill_h),
-        radius=12,
-        fill=fill,
-        outline=(*blend_rgb(bg, (255, 255, 255), 0.55), 120),
-        width=1,
-    )
-    tx = pill_x + pad_x - bbox[0]
-    ty = pill_y + round((pill_h - text_h) / 2) - bbox[1] - 1
-    draw.text((tx, ty), text, fill=(38, 38, 38, 150), font=f)
-    canvas.alpha_composite(overlay)
-
-
-def dominant_bg(path):
-    img = Image.open(path).convert("RGB")
-    img.thumbnail((220, 220), Image.Resampling.LANCZOS)
-    arr = np.asarray(img).astype(np.float32)
-    h, w, _ = arr.shape
-    y0, y1 = int(h * 0.05), int(h * 0.95)
-    x0, x1 = int(w * 0.05), int(w * 0.95)
-    pixels = arr[y0:y1, x0:x1].reshape(-1, 3)
-    if len(pixels) > 7000:
-        pixels = pixels[np.linspace(0, len(pixels) - 1, 7000).astype(int)]
-
-    centers = np.quantile(pixels, np.linspace(0.12, 0.88, 5), axis=0)
-    labels = np.zeros(len(pixels), dtype=np.int64)
-    for _ in range(12):
-        dist = ((pixels[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)
-        labels = dist.argmin(axis=1)
-        centers = np.array([
-            pixels[labels == i].mean(axis=0) if np.any(labels == i) else centers[i]
-            for i in range(5)
-        ])
-
-    rgb = centers[np.bincount(labels, minlength=5).argmax()] / 255.0
-    hue, light, sat = colorsys.rgb_to_hls(*rgb)
-    light = min(max(light, 0.78), 0.9)
-    sat = min(sat * 0.32, 0.16)
-    return tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(hue, light, sat))
-
-
-def draw_text(draw, xy, s, fill, size, medium=False):
-    if not s:
-        return (0, 0, 0, 0)
-    f = font(size, medium)
-    draw.text(xy, str(s), fill=fill, font=f)
-    return draw.textbbox(xy, str(s), font=f)
-
-
-def wrap_text(draw, text, font_obj, max_width):
-    text = str(text)
-    if not text:
-        return []
-
-    tokens = text.split(" ")
-    if len(tokens) > 1:
-        lines = []
-        line = ""
-        for token in tokens:
-            candidate = token if not line else f"{line} {token}"
-            if draw.textlength(candidate, font=font_obj) <= max_width:
-                line = candidate
-            else:
-                if line:
-                    lines.append(line)
-                if draw.textlength(token, font=font_obj) <= max_width:
-                    line = token
-                else:
-                    lines.extend(wrap_text(draw, token, font_obj, max_width))
-                    line = ""
-        if line:
-            lines.append(line)
-        return lines
-
-    lines = []
-    line = ""
-    for ch in text:
-        candidate = line + ch
-        if draw.textlength(candidate, font=font_obj) <= max_width:
-            line = candidate
-        else:
-            if line:
-                lines.append(line)
-            line = ch
-    if line:
-        lines.append(line)
-    return lines
-
-
-def draw_wrapped_text(draw, xy, s, fill, size, max_width, medium=False, max_lines=None, line_gap=8):
-    if not s:
-        return xy[1]
-    f = font(size, medium)
-    lines = wrap_text(draw, s, f, max_width)
-    if max_lines and len(lines) > max_lines:
-        lines = lines[:max_lines]
-        ellipsis = "..."
-        while lines[-1] and draw.textlength(lines[-1] + ellipsis, font=f) > max_width:
-            lines[-1] = lines[-1][:-1]
-        lines[-1] = lines[-1] + ellipsis
-
-    x, y = xy
-    for line in lines:
-        draw.text((x, y), line, fill=fill, font=f)
-        box = draw.textbbox((x, y), line, font=f)
-        y = box[3] + line_gap
-    return y
-
-
-def draw_centered_wrapped_text(draw, center_x, y, s, fill, size, max_width, medium=False, max_lines=None, line_gap=8):
-    if not s:
-        return y
-    f = font(size, medium)
-    lines = wrap_text(draw, s, f, max_width)
-    if max_lines and len(lines) > max_lines:
-        lines = lines[:max_lines]
-        ellipsis = "..."
-        while lines[-1] and draw.textlength(lines[-1] + ellipsis, font=f) > max_width:
-            lines[-1] = lines[-1][:-1]
-        lines[-1] = lines[-1] + ellipsis
-
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=f)
-        line_w = bbox[2] - bbox[0]
-        x = round(center_x - line_w / 2) - bbox[0]
-        draw.text((x, y), line, fill=fill, font=f)
-        box = draw.textbbox((x, y), line, font=f)
-        y = box[3] + line_gap
-    return y
-
-
-def draw_rich_lens_params(draw, xy, s, fill, size, max_width, max_lines=2, line_gap=8):
-    if not s:
-        return xy[1]
-
-    regular = font(size, False)
-    bold = font(size, True)
-    lines = wrap_text(draw, s, regular, max_width)
-    if max_lines and len(lines) > max_lines:
-        lines = lines[:max_lines]
-        ellipsis = "..."
-        while lines[-1] and draw.textlength(lines[-1] + ellipsis, font=regular) > max_width:
-            lines[-1] = lines[-1][:-1]
-        lines[-1] = lines[-1] + ellipsis
-
-    x, y = xy
-    for line in lines:
-        cursor_x = x
-        max_bottom = y
-        for part in re.split(r"(\bS\b)", line):
-            if not part:
-                continue
-            part_font = bold if part == "S" else regular
-            draw.text((cursor_x, y), part, fill=fill, font=part_font)
-            box = draw.textbbox((cursor_x, y), part, font=part_font)
-            cursor_x = box[2]
-            max_bottom = max(max_bottom, box[3])
-        y = max_bottom + line_gap
-    return y
-
-
-def draw_centered_rich_lens_params(draw, center_x, y, s, fill, size, max_width, max_lines=2, line_gap=8):
-    if not s:
-        return y
-
-    regular = font(size, False)
-    bold = font(size, True)
-    lines = wrap_text(draw, s, regular, max_width)
-    if max_lines and len(lines) > max_lines:
-        lines = lines[:max_lines]
-        ellipsis = "..."
-        while lines[-1] and draw.textlength(lines[-1] + ellipsis, font=regular) > max_width:
-            lines[-1] = lines[-1][:-1]
-        lines[-1] = lines[-1] + ellipsis
-
-    for line in lines:
-        parts = [part for part in re.split(r"(\bS\b)", line) if part]
-        line_w = sum(draw.textlength(part, font=(bold if part == "S" else regular)) for part in parts)
-        cursor_x = round(center_x - line_w / 2)
-        max_bottom = y
-        for part in parts:
-            part_font = bold if part == "S" else regular
-            draw.text((cursor_x, y), part, fill=fill, font=part_font)
-            box = draw.textbbox((cursor_x, y), part, font=part_font)
-            cursor_x = box[2]
-            max_bottom = max(max_bottom, box[3])
-        y = max_bottom + line_gap
-    return y
-
-
-def compact_param_lines(items):
-    if len(items) <= 4:
-        return items
-
-    # Keep the camera area fixed: pair short exposure settings instead of
-    # letting extra rows push into the lens area.
-    rows = []
-    pairs = [
-        items[0:2],
-        items[2:4],
-        items[4:6],
-    ]
-    for pair in pairs:
-        if pair:
-            rows.append(" | ".join(str(x) for x in pair if x))
-    return rows
-
-
-def draw_asset(canvas, path, center_x, center_y, max_w, max_h):
-    img = Image.open(path).convert("RGBA")
-    fitted = contain_fit(img, max_w, max_h)
-    x = round(center_x - fitted.width / 2)
-    y = round(center_y - fitted.height / 2)
-    canvas.alpha_composite(fitted, (x, y))
-
-
 def new_card_canvas(width, height, bg, outer_pad=OUTER_PAD, card_r=CARD_R):
     canvas = Image.new("RGBA", (width, height), (232, 232, 228, 255))
     shadow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
@@ -373,135 +242,51 @@ def new_card_canvas(width, height, bg, outer_pad=OUTER_PAD, card_r=CARD_R):
     return canvas
 
 
-def draw_portrait_card(photo_path, exif, bg, camera_png, lens_png, camera_model, lens_model, line_items):
-    canvas = new_card_canvas(CANVAS_W, CANVAS_H, bg)
-    main = Image.open(photo_path).convert("RGB")
-    paste_contained(
-        canvas,
-        main,
-        (PHOTO_X, PHOTO_Y, PHOTO_X + PHOTO_W, PHOTO_Y + PHOTO_H),
-        top_radius=24,
-    )
+def get_renderer(presentation):
+    return load_renderer(presentation.renderer)
 
-    draw = ImageDraw.Draw(canvas)
-    ink = (30, 30, 30, 255)
-    muted = (76, 76, 76, 255)
 
-    left_x = 126
-    right_x = 584
-    text_w = CANVAS_W - OUTER_PAD - right_x - 64
-    camera_area_y = INFO_Y + 20
-    lens_area_y = INFO_Y + 320
-    cam_y = camera_area_y + 128
-    lens_y = lens_area_y + 132
-    draw_asset(canvas, camera_png, left_x + 126, cam_y, 330, 238)
-    draw_asset(canvas, lens_png, left_x + 126, lens_y, 314, 232)
-    y = camera_area_y + 48
-    y = draw_wrapped_text(draw, (right_x, y), camera_model, ink, 40, text_w, True, max_lines=2, line_gap=8) + 14
-    for item in compact_param_lines(line_items[:6]):
-        y = draw_wrapped_text(draw, (right_x, y), item, muted, 30, text_w, False, max_lines=1, line_gap=6) + 8
+def calculate_card_scale(photo_size, base_frame_size):
+    """公共核心函数：根据照片原始尺寸与基准框架尺寸，计算原图无损渲染所需的放缩比例 scale。"""
+    raw_w, raw_h = photo_size
+    frame_w, frame_h = base_frame_size
+    fit_scale = min(frame_w / raw_w, frame_h / raw_h)
+    if fit_scale < 1.0:
+        return 1.0 / fit_scale
+    return 1.0
 
-    lens_family, lens_params = split_lens_display_name(lens_model)
-    y = draw_wrapped_text(draw, (right_x, lens_area_y + 82), lens_family, ink, 40, text_w, True, max_lines=2, line_gap=6) + 16
-    draw_rich_lens_params(draw, (right_x, y), lens_params, muted, 30, text_w, max_lines=2, line_gap=8)
+
+def apply_card_compression(canvas, output_policy, target_base=1080):
+    """公共核心函数：在输出前的最后环节，统一对渲染完成的卡片做尺寸压缩。"""
+    if output_policy and output_policy.compression == "jpeg":
+        if canvas.width >= canvas.height:
+            return resize_by_height(canvas, target_base) if canvas.height > target_base else canvas
+        else:
+            return resize_by_width(canvas, target_base) if canvas.width > target_base else canvas
     return canvas
 
 
-def draw_landscape_card(photo_path, exif, bg, camera_png, lens_png, camera_model, lens_model, line_items):
-    canvas_w = 1440
-    canvas_h = 1080
-    canvas = new_card_canvas(canvas_w, canvas_h, bg)
+def make_card(photo_path, result_dir, renderer, presentation, layout=None, output_policy=None, asset_dir=None, exif=None):
+    from .output import OutputPolicy
 
-    main = Image.open(photo_path).convert("RGB")
-    paste_contained(
-        canvas,
-        main,
-        (84, 84, 900, 996),
-        top_radius=28,
-        rounded_corners={"tl", "tr", "bl", "br"},
-        align_x="start",
-        align_y="start",
-    )
+    output_policy = output_policy or OutputPolicy()
+    layout = str(layout or presentation.default_layout).strip().lower()
+    if layout not in presentation.layouts:
+        raise ValueError(f"Layout {layout!r} is not supported by {presentation.scheme_id}")
+    effective_layout = layout if is_portrait_photo(photo_path) else presentation.default_layout
 
-    draw = ImageDraw.Draw(canvas)
-    ink = (30, 30, 30, 255)
-    muted = (76, 76, 76, 255)
-    panel_x = 952
-    panel_w = canvas_w - OUTER_PAD - panel_x - 54
-    panel_center_x = panel_x + round(panel_w / 2)
+    context = renderer.prepare_context(photo_path, asset_dir or result_dir.parent, presentation, layout, compression=output_policy.compression, exif=exif)
 
-    draw_asset(canvas, camera_png, panel_center_x, 300, 320, 224)
-    y = 438
-    y = draw_centered_wrapped_text(draw, panel_center_x, y, camera_model, ink, 38, panel_w, True, max_lines=2, line_gap=8) + 14
-    for item in compact_param_lines(line_items[:6]):
-        y = draw_centered_wrapped_text(draw, panel_center_x, y, item, muted, 28, panel_w, False, max_lines=1, line_gap=6) + 8
-
-    draw_asset(canvas, lens_png, panel_center_x, 756, 312, 220)
-    lens_family, lens_params = split_lens_display_name(lens_model)
-    y = draw_centered_wrapped_text(draw, panel_center_x, 862, lens_family, ink, 36, panel_w, True, max_lines=2, line_gap=6) + 14
-    draw_centered_rich_lens_params(draw, panel_center_x, y, lens_params, muted, 28, panel_w, max_lines=2, line_gap=8)
-    return canvas
-
-
-def make_card(photo_path, result_dir, gear_assets, layout="portrait"):
-    if layout not in LAYOUTS:
-        raise ValueError(f"Unsupported layout: {layout}")
-    effective_layout = layout if is_portrait_photo(photo_path) else "portrait"
-
-    exif = run_exif(photo_path)
-    bg = dominant_bg(photo_path)
-    icc_profile = source_icc_profile(photo_path, exif)
-
-    camera_model = fmt_model(exif)
-    camera_keys = unique_values([
-        exif.get("CameraModelName"),
-        exif.get("Model"),
-        camera_model,
-    ])
-    camera_png = next((gear_assets["cameras"][key] for key in camera_keys if key in gear_assets["cameras"]), None)
-    if not camera_png:
-        print(f"Warning: no camera PNG match for {photo_path.name}: {camera_model or 'unknown camera'}; using default")
-        camera_png = gear_assets["default_camera"]
-
-    lens_model = (exif.get("LensModel") or exif.get("LensID") or exif.get("Lens") or "").strip()
-    lens_keys = lens_asset_keys(lens_model)
-    lens_png = next((gear_assets["lenses"][key] for key in lens_keys if key in gear_assets["lenses"]), None)
-    if not lens_png:
-        print(f"Warning: no lens PNG match for {photo_path.name}: {lens_model}; using default")
-        lens_png = gear_assets["default_lens"]
-
-    line_items = [
-        exif.get("Format") if exif.get("Format") and str(exif.get("Format")).lower() != "image/jpeg" else None,
-        fmt_f_number(exif.get("FNumber") or exif.get("Aperture")),
-        exif.get("ExposureTime") or exif.get("ShutterSpeed"),
-        f"ISO {exif.get('ISO')}" if exif.get("ISO") else None,
-        fmt_focal(exif.get("FocalLength")),
-        fmt_ev(exif.get("ExposureCompensation")),
-        exif.get("WhiteBalance"),
-    ]
-    line_items = [x for x in line_items if x]
-
-    if effective_layout == "landscape":
-        canvas = draw_landscape_card(photo_path, exif, bg, camera_png, lens_png, camera_model, lens_model, line_items)
-    else:
-        canvas = draw_portrait_card(photo_path, exif, bg, camera_png, lens_png, camera_model, lens_model, line_items)
-
-    draw_top_gps(canvas, fmt_gps(exif), bg)
-    draw_copyright_overlay(
-        canvas,
-        f"\N{COPYRIGHT SIGN} {photo_year(exif)} Vincent Chyu PHOTOGRAPHY - All rights reserved",
-        bg,
-    )
-
-    out = result_dir / f"{photo_path.stem}_card.png"
-    save_kwargs = {"quality": 95}
-    if icc_profile:
-        save_kwargs["icc_profile"] = icc_profile
-    canvas.convert("RGB").save(out, **save_kwargs)
+    context = RenderContext(**{**context.__dict__, "effective_layout": effective_layout, "compression": output_policy.compression})
+    canvas = renderer.apply_overlays(renderer.render(context), context)
+    canvas = apply_card_compression(canvas, output_policy)
+    icc_profile = source_icc_profile(photo_path, context.exif)
+    out = result_dir / f"{photo_path.stem}_card{output_policy.suffix}"
+    output_policy.save_card(canvas, out, icc_profile)
     return out
 
 
-def make_contact_sheet(outputs, result_dir, columns=5):
+def make_contact_sheet(outputs, result_dir, output_policy=None, columns=5):
     if not outputs:
         return None
 
@@ -536,9 +321,7 @@ def make_contact_sheet(outputs, result_dir, columns=5):
     icc_profile = None
     with Image.open(outputs[0]) as first:
         icc_profile = first.info.get("icc_profile")
-    save_kwargs = {"quality": 92}
-    if icc_profile:
-        save_kwargs["icc_profile"] = icc_profile
-    sheet.save(out, **save_kwargs)
-    return out
+    from .output import OutputPolicy
 
+    (output_policy or OutputPolicy()).save_contact_sheet(sheet, out, icc_profile)
+    return out

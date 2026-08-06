@@ -1,3 +1,4 @@
+import functools
 from PIL import ImageFont
 
 from .config import FONT_DIRS
@@ -24,7 +25,9 @@ FONT_REG = (Avenir_NEXT, 7) if Avenir_NEXT else ((HELVETICA_NEUE, 0) if HELVETIC
 FONT_MED = (Avenir_NEXT, 5) if Avenir_NEXT else ((HELVETICA_NEUE, 10) if HELVETICA_NEUE else ((SFNS, 0) if SFNS else (ARIAL_BOLD or FONT_REG[0], 0)))
 
 
+@functools.lru_cache(maxsize=128)
 def font(size, medium=False):
     path, index = FONT_MED if medium else FONT_REG
     return ImageFont.truetype(path, size=size, index=index)
+
 

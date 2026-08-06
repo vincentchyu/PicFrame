@@ -1,0 +1,30 @@
+{
+  "schemes": {
+    "scheme1": {
+      "name": "小红书相机镜头卡片",
+      "renderer": "core.renderers.scheme1:Scheme1Renderer",
+      "output_dir": "scheme1",
+      "config": "config/schemes/scheme1/gear_assets.json",
+      "resources": {
+        "gear_config": "config/schemes/scheme1/gear_assets.json",
+        "gear_assets": "assets/scheme1/gear"
+      },
+      "dependencies": [],
+      "layouts": ["portrait", "landscape"],
+      "default_layout": "portrait"
+    },
+    "scheme2": {
+      "name": "方案2（Semi-Utils 水印）",
+      "renderer": "core.renderers.scheme2:Scheme2Renderer",
+      "output_dir": "scheme2",
+      "config": "config/schemes/scheme2/config.yaml",
+      "resources": {
+        "fonts": "assets/scheme2/fonts",
+        "logos": "assets/scheme2/logos"
+      },
+      "dependencies": ["PyYAML"],
+      "layouts": ["watermark_right_logo"],
+      "default_layout": "watermark_right_logo"
+    }
+  }
+}

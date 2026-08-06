@@ -1,0 +1,91 @@
+base:
+  alternative_bold_font: ../../../assets/scheme2/fonts/Roboto-Medium.ttf
+  alternative_font: ../../../assets/scheme2/fonts/Roboto-Regular.ttf
+  artist: Vincent Chyu
+  bold_font: ../../../assets/scheme2/fonts/AlibabaPuHuiTi-2-85-Bold.otf
+  bold_font_size: 1
+  font: ../../../assets/scheme2/fonts/AlibabaPuHuiTi-2-45-Light.otf
+  font_size: 1
+  input_dir: ""
+  output_dir: ""
+  quality: 100
+global:
+  focal_length:
+    use_equivalent_focal_length: false
+  padding_with_original_ratio:
+    enable: false
+  shadow:
+    enable: false
+  white_margin:
+    enable: true
+    width: 1
+layout:
+  background_color: '#ffffff'
+  elements:
+    left_bottom:
+      color: '#757575'
+      is_bold: false
+      name: Param
+    left_top:
+      color: '#757575'
+      is_bold: false
+      name: LensMake_LensModel
+    right_bottom:
+      color: '#757575'
+      is_bold: false
+      name: Custom
+      value: Vincent Chyu
+    right_top:
+      color: '#757575'
+      is_bold: false
+      name: GeoInfo
+  logo_enable: true
+  logo_position: left
+  type: watermark_right_logo
+logo:
+  default:
+    id: ''
+    path: ../../../assets/scheme2/logos/icon.png
+  makes:
+    apple:
+      id: APPLE
+      path: ../../../assets/scheme2/logos/icon.png
+    canon:
+      id: Canon
+      path: ../../../assets/scheme2/logos/icon.png
+    dji:
+      id: DJI
+      path: ../../../assets/scheme2/logos/DJI.jpg
+    empty:
+      id: "\u7A7A"
+      path: ../../../assets/scheme2/logos/icon.png
+    fujifilm:
+      id: FUJIFILM
+      path: ../../../assets/scheme2/logos/icon.png
+    hasselblad:
+      id: HASSELBLAD
+      path: ../../../assets/scheme2/logos/icon.png
+    huawei:
+      id: HUAWEI
+      path: ../../../assets/scheme2/logos/icon.png
+    leica:
+      id: leica
+      path: ../../../assets/scheme2/logos/icon.png
+    nikon:
+      id: NIKON
+      path: ../../../assets/scheme2/logos/icon.png
+    olympus:
+      id: Olympus
+      path: ../../../assets/scheme2/logos/icon.png
+    panasonic:
+      id: Panasonic
+      path: ../../../assets/scheme2/logos/icon.png
+    pentax:
+      id: PENTAX
+      path: ../../../assets/scheme2/logos/icon.png
+    ricoh:
+      id: RICOH
+      path: ../../../assets/scheme2/logos/icon.png
+    sony:
+      id: SONY
+      path: ../../../assets/scheme2/logos/icon.png

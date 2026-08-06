@@ -1,2 +1,2 @@
-"""PicFrame34 photography card generator package."""
+"""PicFrame photography card generator package."""
 

@@ -1,0 +1,18 @@
+{
+  "defaults": {
+    "camera": "../../../assets/scheme1/gear/default-camera.png",
+    "lens": "../../../assets/scheme1/gear/default-lens.png"
+  },
+  "cameras": {
+    "NIKON Z6_3": "../../../assets/scheme1/gear/Z6III.png",
+    "iPhone 13 Pro": "../../../assets/scheme1/gear/iPhone-13-Pro.png",
+    "iPhone 14 Pro":"../../../assets/scheme1/gear/iPhone-14-Pro.png",
+    "Nikon Z6III": "../../../assets/scheme1/gear/Z6III.png"
+  },
+  "lenses": {
+    "NIKKOR Z 24-120mm f/4 S": "../../../assets/scheme1/gear/NIKKOR Z 24-120mm f4 S.png",
+    "NIKKOR Z 35mm f/1.8 S": "../../../assets/scheme1/gear/NIKKOR Z 35mm f1.8 S.png",
+    "iPhone 14 Pro back triple camera": "../../../assets/scheme1/gear/iPhone 14 Pro back triple camera.png",
+    "iPhone 13 Pro back triple camera": "../../../assets/scheme1/gear/iPhone 13 Pro back triple camera.png"
+  }
+}

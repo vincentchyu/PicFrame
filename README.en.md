@@ -1,13 +1,15 @@
-# Xiaohongshu Photography Info Card Generator
+# PicFrame - Photo Info Card & Watermark Frame Generator
 
-Generate Xiaohongshu/Rednote photography info cards from a folder of photos. The script reads EXIF metadata, matches camera/lens product PNGs, derives a soft background color from each photo, preserves the photo aspect ratio, and writes finished cards plus a contact sheet.
+Batch generate polished photography info cards and watermark frames for photos in a source folder. The script reads EXIF metadata, matches camera/lens product PNGs, matches brand logos, derives soft background colors from photos, preserves 100% original resolution and aspect ratio, supports lossless uncompressed exports as well as social media (Xiaohongshu, WeChat, etc.) compression policies, and outputs finished cards plus contact sheet previews.
 
-The visual direction comes from a Guizang-style social card workflow and this project's [PROMPT.en.md](/Users/vincent/Developer/code/python_code/PicFrame34/PROMPT.en.md), then narrows it into a reusable Python utility for photography cards.
+The visual direction comes from a Guizang-style social card workflow and this project's [PROMPT.en.md](/Users/vincent/Developer/code/python_code/PicFrame/PROMPT.en.md), then expands it into a reusable Python utility for photo presentation cards and watermarks.
 
-Chinese version: [README.md](/Users/vincent/Developer/code/python_code/PicFrame34/README.md).
+Chinese version: [README.md](/Users/vincent/Developer/code/python_code/PicFrame/README.md).
 
 ## Features
 
+- Configurable presentation schemes: `scheme1` is the current visual system, while `portrait` and `landscape` are layouts within scheme1.
+- `scheme2` (Watermark Right Logo layout `watermark_right_logo`): Preserves the source photo aspect ratio and appends a bottom watermark band. Displays exposure parameters (focal length/aperture/shutter speed/ISO), lens model, camera brand Logo, capture date, copyright text, and optional outer white borders.
 - Portrait source photos can use either the `portrait` 3:4 presentation or the `landscape` 4:3 presentation.
 - Reads EXIF with `exiftool`.
 - Preserves the source photo ratio without stretching or forced crop-fill.
@@ -21,7 +23,7 @@ Chinese version: [README.md](/Users/vincent/Developer/code/python_code/PicFrame3
 - Shows a bottom copyright capsule: `© <year> Vincent Chyu PHOTOGRAPHY - All rights reserved`.
 - Reads the copyright year from EXIF capture date when possible.
 - Preserves embedded ICC profiles; sRGB inputs are saved with `sRGB IEC61966-2.1`.
-- Generates `PicFrame34/contact-sheet.jpg` for quick review.
+- Generates `PicFrame/contact-sheet.jpg` for quick review.
 
 ## Requirements
 
@@ -46,38 +48,62 @@ python3 -m pip install -r requirements.txt
 
 ## Folder Structure
 
-Put photos directly in any source folder. The program reads images from that folder and writes results to a `PicFrame34/` folder inside it. `20260707/` below is only an example name.
+Put photos directly in any source folder. The program reads images from that folder and writes results to a `PicFrame/` folder inside it. `20260707/` below is only an example name.
 
 ```text
 .
-├── generate_xhs_photo_cards.py
+├── generate_photo_cards.py
 ├── core/
 │   ├── cli.py
 │   ├── tui.py
 │   ├── batch.py
+│   ├── presentation.py
+│   ├── renderer.py
+│   ├── context.py
+│   ├── output.py
+│   ├── renderers/
+│   │   ├── scheme1/
+│   │   │   ├── renderer.py
+│   │   │   ├── cards.py
+│   │   │   └── assets.py
+│   │   └── scheme2/
+│   │       ├── renderer.py
+│   │       └── watermark.py
 │   ├── rendering.py
 │   ├── metadata.py
-│   ├── assets.py
 │   ├── fonts.py
 │   ├── config.py
 │   └── utils.py
 ├── requirements.txt
 ├── config/
-│   └── gear_assets.json
+│   ├── presentation_schemes.json
+│   └── schemes/
+│       ├── scheme1/
+│       │   └── gear_assets.json
+│       └── scheme2/
+│           └── config.yaml
 ├── assets/
-│   └── gear/
-│       ├── default-camera.png
-│       ├── default-lens.png
-│       ├── Z6III.png
-│       ├── NIKKOR Z 24-120mm f4 S.png
-│       └── NIKKOR Z 35mm f1.8 S.png
+│   ├── scheme1/
+│   │   └── gear/
+│   │       ├── default-camera.png
+│   │       ├── default-lens.png
+│   │       ├── Z6III.png
+│   │       ├── NIKKOR Z 24-120mm f4 S.png
+│   │       └── NIKKOR Z 35mm f1.8 S.png
+│   └── scheme2/
+│       ├── fonts/
+│       └── logos/
 └── 20260707/
     ├── DSC_0001.jpg
     ├── DSC_0002.png
-    └── PicFrame34/
+    └── PicFrame/
 ```
 
-Built-in product PNGs live in `assets/gear/`. Task-local assets can live in the task folder's own `assets/gear/` folder or task root, and they take priority over built-in assets. Model-to-asset mappings are maintained globally in `config/gear_assets.json`.
+Scheme resources are isolated by scheme. Scheme1 product PNGs live in `assets/scheme1/gear/`, and their mapping config lives in `config/schemes/scheme1/gear_assets.json`. Scheme2 fonts and logos live in `assets/scheme2/`, with config in `config/schemes/scheme2/config.yaml`. Task-local assets can still live in the task folder's own `assets/gear/` folder or task root, and they take priority over built-in assets.
+
+Presentation schemes are registered in `config/presentation_schemes.json`. The configuration contains the scheme ID, display name, supported layouts, default layout, and renderer ID; coordinates, typography, and drawing behavior remain in Python. A future scheme can therefore add one config entry and one renderer without changing EXIF, asset matching, or batch processing.
+
+The source scheme2 configuration is migrated as `config/schemes/scheme2/config.yaml`, with its fonts and manufacturer logos under `assets/scheme2/`. Scheme2 preserves the original photo ratio, appends a bottom watermark information band, matches a logo from EXIF manufacturer data, and uses the configured four text areas, colors, weights, and copyright settings.
 
 ## Usage
 
@@ -90,25 +116,41 @@ source .venv/bin/activate
 Open the TUI and choose a source photo folder:
 
 ```bash
-python3 generate_xhs_photo_cards.py
+python3 generate_photo_cards.py
 ```
 
 The script can also run directly as an executable:
 
 ```bash
-./generate_xhs_photo_cards.py
+./generate_photo_cards.py
 ```
 
 You can also pass a source folder directly for batch usage:
 
 ```bash
-python3 generate_xhs_photo_cards.py --source 20260707
+python3 generate_photo_cards.py --source 20260707
 ```
+
+To select a presentation scheme explicitly:
+
+```bash
+python3 generate_photo_cards.py --source 20260707 --scheme scheme1 --layout portrait
+```
+
+To use scheme2:
+
+```bash
+python3 generate_photo_cards.py --source 20260707 --scheme scheme2
+```
+
+Scheme2 currently provides only the `watermark_right_logo` layout and uses it as the default when no layout is specified.
+
+`--scheme` defaults to `scheme1`, so existing commands keep their behavior. `--layout` selects a layout within the chosen scheme; landscape source photos still fall back to the scheme's default layout under the current rules.
 
 `--layout` only changes output for source photos whose width is less than their height. For portrait photos that work better as a horizontal info card:
 
 ```bash
-python3 generate_xhs_photo_cards.py --source 20260707 --layout landscape
+python3 generate_photo_cards.py --source 20260707 --layout landscape
 ```
 
 This portrait-photo landscape output is `1440 x 1080`, with the main photo on the left, the info column on the right, and all four photo corners rounded. Landscape source photos are not changed by this option and keep the default card layout.
@@ -116,13 +158,13 @@ This portrait-photo landscape output is `1440 x 1080`, with the main photo on th
 Or run without activation:
 
 ```bash
-.venv/bin/python3 generate_xhs_photo_cards.py --source 20260707
+.venv/bin/python3 generate_photo_cards.py --source 20260707
 ```
 
 For the old task-folder layout, use the explicit compatibility mode:
 
 ```bash
-python3 generate_xhs_photo_cards.py --legacy-task 20260707
+python3 generate_photo_cards.py --legacy-task 20260707
 ```
 
 Legacy mode reads `20260707/src/` and writes `20260707/result/`.
@@ -130,49 +172,51 @@ Legacy mode reads `20260707/src/` and writes `20260707/result/`.
 To write new-mode output somewhere else:
 
 ```bash
-python3 generate_xhs_photo_cards.py --source 20260707 --output 20260707-cards
+python3 generate_photo_cards.py --source 20260707 --output 20260707-cards
 ```
 
-Outputs are written to:
+New-mode outputs are isolated by scheme, layout, and format:
 
 ```text
-20260707/PicFrame34/
+20260707/PicFrame/<scheme>/<layout>/<format>/
 ```
 
 Each source photo produces:
 
 ```text
-<photo_stem>_card.png
+<photo_stem>_card.png or <photo_stem>_card.jpg
 ```
 
 The script also writes:
 
 ```text
-20260707/PicFrame34/contact-sheet.jpg
+20260707/PicFrame/<scheme>/<layout>/<format>/contact-sheet.jpg
 ```
+
+Each output folder also gets a `manifest.json` with the selected scheme, renderer, layout, compression, format, source folder, output folder, and output file list.
 
 ## Assets
 
-`config/gear_assets.json` is the global config file for default camera/lens PNGs and camera/lens model mappings. Current default config:
+`config/schemes/scheme1/gear_assets.json` is scheme1's config file for default camera/lens PNGs and camera/lens model mappings. Current default config:
 
 ```json
 {
   "defaults": {
-    "camera": "../assets/gear/default-camera.png",
-    "lens": "../assets/gear/default-lens.png"
+    "camera": "../../../assets/scheme1/gear/default-camera.png",
+    "lens": "../../../assets/scheme1/gear/default-lens.png"
   },
   "cameras": {
-    "NIKON Z6_3": "../assets/gear/Z6III.png",
-    "Nikon Z6III": "../assets/gear/Z6III.png"
+    "NIKON Z6_3": "../../../assets/scheme1/gear/Z6III.png",
+    "Nikon Z6III": "../../../assets/scheme1/gear/Z6III.png"
   },
   "lenses": {
-    "NIKKOR Z 24-120mm f/4 S": "../assets/gear/NIKKOR Z 24-120mm f4 S.png",
-    "NIKKOR Z 35mm f/1.8 S": "../assets/gear/NIKKOR Z 35mm f1.8 S.png"
+    "NIKKOR Z 24-120mm f/4 S": "../../../assets/scheme1/gear/NIKKOR Z 24-120mm f4 S.png",
+    "NIKKOR Z 35mm f/1.8 S": "../../../assets/scheme1/gear/NIKKOR Z 35mm f1.8 S.png"
   }
 }
 ```
 
-If no camera or lens match is found, the script prints a warning and uses `default-camera.png` or `default-lens.png` without stopping the batch. To support more gear later, add the EXIF `Model` / `CameraModelName` or `LensModel` / `LensID` / `Lens` string to `config/gear_assets.json`, then place the matching PNG in `assets/gear/`.
+If no camera or lens match is found, the script prints a warning and uses `default-camera.png` or `default-lens.png` without stopping the batch. To support more gear later, add the EXIF `Model` / `CameraModelName` or `LensModel` / `LensID` / `Lens` string to `config/schemes/scheme1/gear_assets.json`, then place the matching PNG in `assets/scheme1/gear/`.
 
 iPhone `LensModel` / `LensID` values include the active focal length and aperture, for example `iPhone 14 Pro back triple camera 6.86mm f/1.78`. Asset matching also tries the module-level key `iPhone 14 Pro back triple camera`, because iPhone lenses are not interchangeable and the PNG should represent the camera module. The card text still keeps the full focal length and aperture.
 
@@ -204,16 +248,23 @@ An independent `S` in the parameter line is rendered with a heavier weight becau
 
 ## Development Notes
 
-`generate_xhs_photo_cards.py` is now a thin executable entry point. The implementation lives in the `core/` package:
+`generate_photo_cards.py` is now a thin executable entry point. The implementation lives in the `core/` package:
 
 - `core/cli.py`: command-line arguments and default TUI launch.
 - `core/tui.py`: `curses` folder picker, layout picker, and progress screens.
+- `core/presentation.py`: presentation-scheme configuration, validation, and scheme/layout resolution.
+- `core/renderer.py`: renderer abstraction, dynamic loading, and selected-scheme config/resources/dependencies validation.
+- `core/context.py`: shared EXIF, background color, and exposure context without scheme-specific layout.
+- `core/renderers/scheme1/`: scheme1 package containing renderer (`renderer.py`), original-resolution 3:4/4:3 card drawing (`cards.py`), and gear lookup (`assets.py`).
+- `core/renderers/scheme2/`: scheme2 package containing renderer (`renderer.py`) and original-resolution watermark band rendering (`watermark.py`).
+- `core/output.py`: PNG/JPEG output policy and encoding.
 - `core/batch.py`: source scanning, output folders, batch generation, and legacy task compatibility.
-- `core/rendering.py`: Pillow/numpy card rendering, layouts, rounded masks, text drawing, and contact sheets.
+- `core/rendering.py`: shared Pillow image primitives, renderer invocation, unified card output compression (`apply_card_compression`), and contact sheets.
 - `core/metadata.py`: EXIF, GPS, altitude, lens text, and ICC profile handling.
-- `core/assets.py`: `config/gear_assets.json` and camera/lens PNG lookup.
 - `core/fonts.py`: macOS font lookup and `.ttc` face indices.
 - `core/config.py`: paths, canvas sizes, extensions, and layout constants.
+
+The relationship is one scheme per batch, followed by one layout within that scheme. `scheme1` currently registers `portrait` and `landscape`; a future scheme should be registered in `config/presentation_schemes.json` and implemented by a corresponding renderer.
 
 The implementation intentionally keeps the layout deterministic instead of template-fluid:
 
@@ -225,4 +276,4 @@ The implementation intentionally keeps the layout deterministic instead of templ
 - Typography: explicit `.ttc` face indices to avoid accidentally loading a bold face
 - Contact sheet: generated automatically after cards
 
-See [PROMPT.en.md](/Users/vincent/Developer/code/python_code/PicFrame34/PROMPT.en.md) for the design and implementation constraints that should guide future changes.
+See [PROMPT.en.md](/Users/vincent/Developer/code/python_code/PicFrame/PROMPT.en.md) for the design and implementation constraints that should guide future changes.

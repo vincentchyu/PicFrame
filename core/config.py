@@ -2,8 +2,6 @@ from pathlib import Path
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-GEAR_CONFIG = PROJECT_DIR / "config" / "gear_assets.json"
-GEAR_ASSET_DIR = PROJECT_DIR / "assets" / "gear"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 LAYOUTS = {"portrait", "landscape"}
 
@@ -23,4 +21,3 @@ FONT_DIRS = [
     Path("/Library/Fonts"),
 ]
 SRGB_PROFILE = Path("/System/Library/ColorSync/Profiles/sRGB Profile.icc")
-

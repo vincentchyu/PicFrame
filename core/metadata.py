@@ -1,6 +1,8 @@
+import functools
 import json
 import re
 import subprocess
+from pathlib import Path
 
 from PIL import Image, ImageCms
 
@@ -8,9 +10,36 @@ from .config import SRGB_PROFILE
 from .utils import unique_values
 
 
-def run_exif(path):
-    out = subprocess.check_output(["exiftool", "-json", str(path)], text=True)
+@functools.lru_cache(maxsize=256)
+def _cached_run_exif(str_path):
+    out = subprocess.check_output(["exiftool", "-json", str_path], text=True)
     return json.loads(out)[0]
+
+
+def run_exif(path):
+    return _cached_run_exif(str(Path(path).resolve()))
+
+
+def run_exif_batch(paths):
+    if not paths:
+        return {}
+    resolved_paths = [Path(p).resolve() for p in paths]
+    str_paths = [str(p) for p in resolved_paths]
+    try:
+        out = subprocess.check_output(["exiftool", "-json", *str_paths], text=True)
+        data = json.loads(out)
+        res = {}
+        for item in data:
+            source_file = item.get("SourceFile")
+            if source_file:
+                resolved_key = Path(source_file).resolve()
+                res[resolved_key] = item
+                # Fill cache
+                _cached_run_exif.cache_parameters() if hasattr(_cached_run_exif, "cache_parameters") else None
+        return res
+    except Exception:
+        return {p: run_exif(p) for p in resolved_paths}
+
 
 
 def fmt_model(exif):
@@ -160,6 +189,42 @@ def photo_year(exif):
         if match:
             return match.group(0)
     return "2026"
+
+
+def fmt_copyright(exif, artist="Vincent Chyu"):
+    """格式化统一的版权声明文本。"""
+    year = photo_year(exif)
+    artist_name = str(artist or "Vincent Chyu").strip()
+    return f"© {year} {artist_name} PHOTOGRAPHY - All rights reserved"
+
+
+def fmt_focal_integer(exif):
+    """从 EXIF 中提取整数焦距，回退返回 '--'。"""
+    value = str(exif.get("FocalLength") or "--")
+    match = re.search(r"(\d+)\.", value)
+    return match.group(1) if match else (value if str(value).isdigit() else "--")
+
+
+def fmt_date(exif):
+    """从 EXIF 中提取拍摄日期，返回 'YYYY-MM-DD' 格式字符串。
+
+    优先读取 DateTimeOriginal，找不到时回退到当天。
+    兼容 exiftool 输出的 '2024:07:15 10:30:00' 格式。
+    """
+    from datetime import datetime
+
+    for key in ("DateTimeOriginal", "CreateDate", "SubSecDateTimeOriginal", "ModifyDate"):
+        value = str(exif.get(key) or "").strip()
+        if not value:
+            continue
+        # exiftool 格式: '2024:07:15 10:30:00'
+        if len(value) >= 10 and value[4] == ":" and value[7] == ":":
+            return f"{value[:4]}-{value[5:7]}-{value[8:10]}"
+        # 其他格式: '2024-07-15 ...'
+        date_part = value.split(" ", 1)[0]
+        if len(date_part) >= 8:
+            return date_part
+    return datetime.now().strftime("%Y-%m-%d")
 
 
 def srgb_icc_profile():

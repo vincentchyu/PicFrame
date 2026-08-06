@@ -1,12 +1,12 @@
 # 摄影信息卡生成约束
 
-本文档定义 `generate_xhs_photo_cards.py` 的设计和实现约束。英文版见 [PROMPT.en.md](/Users/vincent/Developer/code/python_code/PicFrame34/PROMPT.en.md)。
+本文档定义 `generate_photo_cards.py` 的设计和实现约束。英文版见 [PROMPT.en.md](/Users/vincent/Developer/code/python_code/PicFrame/PROMPT.en.md)。
 
 项目受到 Guizang social card workflow 的启发：成品应该是一张完整、克制、可发布的社交媒体图片，而不是原始 EXIF 数据表。当前目录中的 `template.png` 只能作为布局参考，不是必须逐像素复刻的模板。
 
 ## 目标
 
-遍历用户选择的源目录中的图片，为每张图片在该目录的 `PicFrame34/` 中生成一张摄影信息卡。
+遍历用户选择的源目录中的图片，为每张图片在该目录的 `PicFrame/` 中生成一张摄影信息卡。
 
 成品应满足：
 
@@ -34,17 +34,17 @@
 <source>/
 ├── DSC_0001.jpg
 ├── DSC_0002.png
-└── PicFrame34/
+└── PicFrame/
 ```
 
-如果 `PicFrame34/` 不存在，脚本应自动创建。
+如果 `PicFrame/` 不存在，脚本应自动创建。
 
 默认可执行入口行为：
 
-- 运行 `python3 generate_xhs_photo_cards.py` 时打开终端 TUI，用于选择源目录。
-- 运行 `python3 generate_xhs_photo_cards.py --source <source>` 时不打开 TUI，直接处理该源目录。
-- 运行 `python3 generate_xhs_photo_cards.py --source <source> --layout landscape` 时，仅对源图宽度小于高度的竖图使用横版展示。
-- 运行 `python3 generate_xhs_photo_cards.py --legacy-task <task>` 时使用旧兼容行为：读取 `<task>/src/`，写入 `<task>/result/`。
+- 运行 `python3 generate_photo_cards.py` 时打开终端 TUI，用于选择源目录。
+- 运行 `python3 generate_photo_cards.py --source <source>` 时不打开 TUI，直接处理该源目录。
+- 运行 `python3 generate_photo_cards.py --source <source> --layout landscape` 时，仅对源图宽度小于高度的竖图使用横版展示。
+- 运行 `python3 generate_photo_cards.py --legacy-task <task>` 时使用旧兼容行为：读取 `<task>/src/`，写入 `<task>/result/`。
 
 支持的源文件格式：
 
@@ -54,40 +54,53 @@
 - `.tif`
 - `.tiff`
 
+## 展示方案约定
+
+展示方案和方案内布局是两层概念：
+
+- `scheme1` 是当前已有的摄影信息卡视觉体系。
+- `portrait` / `landscape` 是 `scheme1` 内部的布局选项，不代表独立展示方案。
+- 方案注册统一维护在 `config/presentation_schemes.json`。
+- 每个批次选择一个展示方案，再选择该方案支持的 layout；同一批次不混用多个方案。
+- 新方案应新增配置项和独立 renderer，不应把方案差异继续堆叠到 `portrait` / `landscape` 分支中。
+- 方案配置只表达 ID、名称、支持的 layout、默认 layout 和 renderer ID；具体坐标、字体和绘制细节留在 Python renderer 中。
+- `scheme2` 为右侧 Logo 水印带布局 (`watermark_right_logo`)；配置位于 `config/schemes/scheme2/config.yaml`，字体和品牌 Logo 在 `assets/scheme2/`。其保留照片原始比例并在底部拼接包含曝光参数、镜头型号、品牌 Logo、日期与版权的水印栏。
+- 方案2保留原图比例，在底部追加水印信息带；方案2自己的 GPS、Logo 和版权信息不再叠加方案1的顶部/底部胶囊。
+
 ## 素材
 
 相机和镜头产品 PNG 按以下顺序查找：
 
 1. 任务文件夹的 `assets/gear/`
 2. 任务文件夹
-3. 项目内置 `assets/gear/`
+3. 所选方案的内置素材目录，例如 `assets/scheme1/gear/`
 4. 脚本所在文件夹
 
 当前内置素材：
 
 ```text
-assets/gear/default-camera.png
-assets/gear/default-lens.png
-assets/gear/Z6III.png
-assets/gear/NIKKOR Z 24-120mm f4 S.png
-assets/gear/NIKKOR Z 35mm f1.8 S.png
+assets/scheme1/gear/default-camera.png
+assets/scheme1/gear/default-lens.png
+assets/scheme1/gear/Z6III.png
+assets/scheme1/gear/NIKKOR Z 24-120mm f4 S.png
+assets/scheme1/gear/NIKKOR Z 35mm f1.8 S.png
 ```
 
-相机和镜头匹配统一维护在全局配置文件 `config/gear_assets.json` 中。当前配置：
+方案1的相机和镜头匹配维护在 `config/schemes/scheme1/gear_assets.json` 中。当前配置：
 
 ```json
 {
   "defaults": {
-    "camera": "../assets/gear/default-camera.png",
-    "lens": "../assets/gear/default-lens.png"
+    "camera": "../../../assets/scheme1/gear/default-camera.png",
+    "lens": "../../../assets/scheme1/gear/default-lens.png"
   },
   "cameras": {
-    "NIKON Z6_3": "../assets/gear/Z6III.png",
-    "Nikon Z6III": "../assets/gear/Z6III.png"
+    "NIKON Z6_3": "../../../assets/scheme1/gear/Z6III.png",
+    "Nikon Z6III": "../../../assets/scheme1/gear/Z6III.png"
   },
   "lenses": {
-    "NIKKOR Z 24-120mm f/4 S": "../assets/gear/NIKKOR Z 24-120mm f4 S.png",
-    "NIKKOR Z 35mm f/1.8 S": "../assets/gear/NIKKOR Z 35mm f1.8 S.png"
+    "NIKKOR Z 24-120mm f/4 S": "../../../assets/scheme1/gear/NIKKOR Z 24-120mm f4 S.png",
+    "NIKKOR Z 35mm f/1.8 S": "../../../assets/scheme1/gear/NIKKOR Z 35mm f1.8 S.png"
   }
 }
 ```
@@ -98,7 +111,7 @@ assets/gear/NIKKOR Z 35mm f1.8 S.png
 - 相机使用默认相机 PNG。
 - 使用默认镜头 PNG。
 - 不要中断整个批处理。
-- 后续支持更多机型时，优先扩展 `config/gear_assets.json` 并把 PNG 放进 `assets/gear/`，不要把型号映射写死在 Python 代码里。
+- 后续支持更多机型时，优先扩展 `config/schemes/scheme1/gear_assets.json` 并把 PNG 放进 `assets/scheme1/gear/`，不要把型号映射写死在 Python 代码里。
 - iPhone 的 `LensModel` / `LensID` 可能是 `iPhone 14 Pro back triple camera 6.86mm f/1.78`；素材匹配时应额外尝试 `iPhone 14 Pro back triple camera` 这种模组级 key，但镜头文字显示仍保留完整焦段和光圈。
 
 ## 布局
@@ -411,7 +424,7 @@ Fallbacks:
 生成所有卡片后，同时创建：
 
 ```text
-PicFrame34/contact-sheet.jpg
+PicFrame/contact-sheet.jpg
 ```
 
 规则：
@@ -437,14 +450,19 @@ PicFrame34/contact-sheet.jpg
 
 ## 代码结构
 
-`generate_xhs_photo_cards.py` 只作为可执行入口，不能继续堆叠制图、EXIF 或 TUI 逻辑。核心实现放在 `core/` 包中：
+`generate_photo_cards.py` 只作为可执行入口，不能继续堆叠制图、EXIF 或 TUI 逻辑。核心实现放在 `core/` 包中：
 
 - `core/cli.py`：命令行参数、默认 TUI 启动、错误出口。
 - `core/tui.py`：标准库 `curses` 目录选择、布局选择、进度和错误显示。
+- `core/presentation.py`：展示方案配置、方案/layout 校验和解析。
+- `core/renderer.py`：方案 renderer 抽象、动态加载，以及所选方案的 config/resources/dependencies 校验。
+- `core/renderers/scheme1/`：方案1独立包，包含 renderer (`renderer.py`)、原始分辨率 3:4/4:3 卡片绘制 (`cards.py`) 和器材素材查找 (`assets.py`)。
+- `core/renderers/scheme2/`：方案2独立包，包含 renderer (`renderer.py`) 和原始分辨率水印带绘制 (`watermark.py`)。
 - `core/batch.py`：源目录扫描、输出目录、批量生成、旧任务结构兼容。
-- `core/rendering.py`：Pillow/numpy 制图核心、布局、圆角 mask、文字绘制和 contact sheet。
+- `core/renderer.py`：方案 renderer 抽象。
+- `core/output.py`：PNG/JPEG 输出策略与编码。
+- `core/rendering.py`：公共 Pillow 图像 primitive、renderer 调用入口、统一卡片输出压缩 (`apply_card_compression`) 和 contact sheet。
 - `core/metadata.py`：EXIF、GPS、海拔、镜头名解析、ICC profile。
-- `core/assets.py`：`config/gear_assets.json` 和相机/镜头 PNG 查找。
 - `core/fonts.py`：字体查找、`.ttc` face index 和 `font()`。
 - `core/config.py`：项目路径、画布尺寸、扩展名、布局常量。
 - `core/utils.py`：无领域状态的通用小工具。
@@ -452,10 +470,10 @@ PicFrame34/contact-sheet.jpg
 修改原则：
 
 - 改 CLI/TUI 时不要碰制图核心。
-- 改布局或图像生成时优先在 `rendering.py` 内完成。
+- 改某个方案的布局或图像生成时优先在对应的 `core/renderers/` 模块内完成。
 - 改 EXIF、GPS、ICC、镜头解析时优先在 `metadata.py` 内完成。
-- 改素材搜索或型号映射读取时优先在 `assets.py` 和 `config/gear_assets.json` 内完成。
-- 保持 `generate_xhs_photo_cards.py` 为薄入口，避免重新变成千行脚本。
+- 改素材搜索或型号映射读取时优先在对应方案的 renderer 资源模块和 `config/schemes/` 配置内完成。
+- 保持 `generate_photo_cards.py` 为薄入口，避免重新变成千行脚本。
 
 ## 验证清单
 
@@ -475,5 +493,5 @@ PicFrame34/contact-sheet.jpg
 - 确认有海拔时 GPS 胶囊追加海拔。
 - 确认版权年份来自 EXIF。
 - 确认输出 ICC 被继承或设置为 sRGB。
-- 默认源目录模式确认存在 `PicFrame34/contact-sheet.jpg`。
+- 默认源目录模式确认存在 `PicFrame/contact-sheet.jpg`。
 - 显式 `--legacy-task` 兼容模式确认存在 `result/contact-sheet.jpg`。

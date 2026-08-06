@@ -1,12 +1,12 @@
 # Photography Info Card Generation Prompt
 
-This document defines the design and implementation constraints for `generate_xhs_photo_cards.py`. Chinese version: [PROMPT.md](/Users/vincent/Developer/code/python_code/PicFrame34/PROMPT.md).
+This document defines the design and implementation constraints for `generate_photo_cards.py`. Chinese version: [PROMPT.md](/Users/vincent/Developer/code/python_code/PicFrame/PROMPT.md).
 
 The project is inspired by the Guizang social card workflow: the output should read as a polished, publishable social-media image, not a raw EXIF dump. `template.png` is a layout reference, not a pixel-perfect template.
 
 ## Goal
 
-For every image in a chosen source folder, generate one finished photography information card in that folder's `PicFrame34/` output folder.
+For every image in a chosen source folder, generate one finished photography information card in that folder's `PicFrame/` output folder.
 
 The card should:
 
@@ -24,7 +24,7 @@ The card should:
 - Default output ratio: `3:4`
 - Default output size: `1080 x 1440`
 - When the source image is portrait (`width < height`) and `landscape` is selected, output ratio is `4:3` and output size is `1440 x 1080`
-- Output format: PNG cards plus a JPEG contact sheet
+- Default output format: uncompressed PNG cards plus a JPEG contact sheet. With compression selected, cards are JPEG.
 
 ## Source Folder Contract
 
@@ -34,17 +34,17 @@ Default source folder:
 <source>/
 ├── DSC_0001.jpg
 ├── DSC_0002.png
-└── PicFrame34/
+└── PicFrame/
 ```
 
-The script should create `PicFrame34/` automatically if it does not exist.
+The script should create `PicFrame/` automatically if it does not exist.
 
 The default executable behavior is:
 
-- Running `python3 generate_xhs_photo_cards.py` opens a terminal UI for choosing the source folder.
-- Running `python3 generate_xhs_photo_cards.py --source <source>` processes that source folder without the TUI.
-- Running `python3 generate_xhs_photo_cards.py --source <source> --layout landscape` applies the landscape presentation only to source images whose width is less than their height.
-- Running `python3 generate_xhs_photo_cards.py --legacy-task <task>` keeps the old compatibility behavior: read `<task>/src/` and write `<task>/result/`.
+- Running `python3 generate_photo_cards.py` opens a terminal UI for choosing the source folder.
+- Running `python3 generate_photo_cards.py --source <source>` processes that source folder without the TUI.
+- Running `python3 generate_photo_cards.py --source <source> --layout landscape` applies the landscape presentation only to source images whose width is less than their height.
+- Running `python3 generate_photo_cards.py --legacy-task <task>` keeps the old compatibility behavior: read `<task>/src/` and write `<task>/result/`.
 
 Supported source extensions:
 
@@ -54,40 +54,56 @@ Supported source extensions:
 - `.tif`
 - `.tiff`
 
+## Presentation Scheme Contract
+
+Presentation schemes and layouts are separate concepts:
+
+- `scheme1` is the current photography information-card visual system.
+- `portrait` and `landscape` are layouts within `scheme1`, not independent presentation schemes.
+- Scheme registration is maintained in `config/presentation_schemes.json`, including the renderer import path, scheme config, resource roots, and optional dependencies.
+- Each batch selects one presentation scheme and one layout supported by that scheme; a batch does not mix schemes.
+- A new scheme should add a config entry and an independent renderer instead of accumulating more branches in `portrait` / `landscape`.
+- Scheme configuration expresses only the ID, name, supported layouts, default layout, and renderer ID; coordinates, typography, and drawing details remain in the Python renderer.
+- The renderer ID is resolved through the renderer registry and must select the implementation used for the batch.
+- Every renderer receives the same `RendererContext` contract; scheme-specific assets, configs, dependencies, and overlays stay inside that renderer package.
+- New-mode outputs are isolated under `PicFrame/<scheme>/<layout>/<format>/` and include a `manifest.json` describing the selected scheme, renderer, layout, compression, and files.
+- `scheme2` uses the `watermark_right_logo` watermark-band layout; its configuration is maintained in `config/schemes/scheme2/config.yaml`, with fonts and brand logos under `assets/scheme2/`. It preserves the source aspect ratio and appends a bottom watermark band containing exposure params, lens model, brand logo, date, and copyright.
+- Scheme2 preserves the source ratio and appends a bottom watermark band; its own GPS, logo, and copyright content are not duplicated by scheme1's top/bottom capsules.
+
 ## Assets
 
 Camera and lens product PNGs are looked up in this order:
 
 1. The task folder's `assets/gear/`
 2. The task folder
-3. The built-in `assets/gear/`
+3. The selected scheme's built-in asset folder, such as `assets/scheme1/gear/`
 4. The script folder
 
 Current built-in assets:
 
 ```text
-assets/gear/default-camera.png
-assets/gear/default-lens.png
-assets/gear/Z6III.png
-assets/gear/NIKKOR Z 24-120mm f4 S.png
-assets/gear/NIKKOR Z 35mm f1.8 S.png
+assets/scheme1/gear/default-camera.png
+assets/scheme1/gear/default-lens.png
+assets/scheme1/gear/Z6III.png
+assets/scheme1/gear/NIKKOR Z 24-120mm f4 S.png
+assets/scheme1/gear/NIKKOR Z 35mm f1.8 S.png
 ```
 
-Camera and lens mappings are maintained in the global `config/gear_assets.json` file. Current config:
+Camera and lens mappings for scheme1 are maintained in `config/schemes/scheme1/gear_assets.json`. Current config:
 
 ```json
 {
   "defaults": {
-    "camera": "../assets/gear/default-camera.png",
-    "lens": "../assets/gear/default-lens.png"
+    "camera": "../../../assets/scheme1/gear/default-camera.png",
+    "lens": "../../../assets/scheme1/gear/default-lens.png"
   },
   "cameras": {
-    "NIKON Z6_3": "../assets/gear/Z6III.png",
-    "Nikon Z6III": "../assets/gear/Z6III.png"
+    "NIKON Z6_3": "../../../assets/scheme1/gear/Z6III.png",
+    "Nikon Z6III": "../../../assets/scheme1/gear/Z6III.png"
   },
   "lenses": {
-    "NIKKOR Z 24-120mm f/4 S": "../assets/gear/NIKKOR Z 24-120mm f4 S.png",
-    "NIKKOR Z 35mm f/1.8 S": "../assets/gear/NIKKOR Z 35mm f1.8 S.png"
+    "NIKKOR Z 24-120mm f/4 S": "../../../assets/scheme1/gear/NIKKOR Z 24-120mm f4 S.png",
+    "NIKKOR Z 35mm f/1.8 S": "../../../assets/scheme1/gear/NIKKOR Z 35mm f1.8 S.png"
   }
 }
 ```
@@ -98,7 +114,7 @@ If the camera or lens cannot be matched:
 - Use a default camera PNG.
 - Use a default lens PNG.
 - Do not fail the whole batch.
-- Add future model support in `config/gear_assets.json` and place PNGs in `assets/gear/`, not as hard-coded Python mappings.
+- Add future model support in `config/schemes/scheme1/gear_assets.json` and place PNGs in `assets/scheme1/gear/`, not as hard-coded Python mappings.
 - iPhone `LensModel` / `LensID` values may look like `iPhone 14 Pro back triple camera 6.86mm f/1.78`; asset matching should also try the module-level key `iPhone 14 Pro back triple camera`, while the displayed lens text keeps the full focal length and aperture.
 
 ## Layout
@@ -411,7 +427,7 @@ Non-negotiable:
 After generating all cards, also create:
 
 ```text
-PicFrame34/contact-sheet.jpg
+PicFrame/contact-sheet.jpg
 ```
 
 Rules:
@@ -437,14 +453,19 @@ This project does not copy the Guizang skill templates. It uses the social-card 
 
 ## Code Structure
 
-`generate_xhs_photo_cards.py` is only the executable entry point. Do not keep adding rendering, EXIF, or TUI logic to it. The implementation lives in the `core/` package:
+`generate_photo_cards.py` is only the executable entry point. Do not keep adding rendering, EXIF, or TUI logic to it. The implementation lives in the `core/` package:
 
 - `core/cli.py`: command-line arguments, default TUI launch, and error exits.
 - `core/tui.py`: standard-library `curses` folder picker, layout picker, progress screens, and readable errors.
+- `core/presentation.py`: presentation-scheme configuration and scheme/layout validation.
+- `core/renderer.py`: renderer abstraction, dynamic loading, and selected-scheme config/resources/dependencies validation.
+- `core/renderers/scheme1/`: scheme1 package containing renderer (`renderer.py`), original-resolution 3:4/4:3 card drawing (`cards.py`), and gear PNG lookup (`assets.py`).
+- `core/renderers/scheme2/`: scheme2 package containing renderer (`renderer.py`) and original-resolution watermark-band rendering (`watermark.py`).
 - `core/batch.py`: source scanning, output folder selection, batch generation, and legacy task compatibility.
-- `core/rendering.py`: Pillow/numpy rendering core, layouts, rounded masks, text drawing, and contact sheets.
+- `core/renderer.py`: presentation renderer abstraction.
+- `core/output.py`: PNG/JPEG output policy and encoding.
+- `core/rendering.py`: shared Pillow image primitives, renderer invocation, unified card output compression (`apply_card_compression`), and contact sheets.
 - `core/metadata.py`: EXIF, GPS, altitude, lens text parsing, and ICC profiles.
-- `core/assets.py`: `config/gear_assets.json` plus camera/lens PNG lookup.
 - `core/fonts.py`: font lookup, `.ttc` face indices, and `font()`.
 - `core/config.py`: project paths, canvas sizes, extensions, and layout constants.
 - `core/utils.py`: small stateless helpers.
@@ -452,10 +473,10 @@ This project does not copy the Guizang skill templates. It uses the social-card 
 Modification rules:
 
 - CLI/TUI changes should not touch the rendering core unless required.
-- Layout or image-generation changes should usually stay in `rendering.py`.
+- Scheme-specific layout or image-generation changes should usually stay in the matching `core/renderers/` module.
 - EXIF, GPS, ICC, and lens parsing changes should usually stay in `metadata.py`.
-- Asset lookup or model mapping changes should usually stay in `assets.py` and `config/gear_assets.json`.
-- Keep `generate_xhs_photo_cards.py` as a thin entry point instead of letting it grow back into a thousand-line script.
+- Asset lookup or model mapping changes should usually stay in the matching renderer resource module and the selected scheme config under `config/schemes/`.
+- Keep `generate_photo_cards.py` as a thin entry point instead of letting it grow back into a thousand-line script.
 
 ## Verification Checklist
 
@@ -475,5 +496,5 @@ Before considering a change complete:
 - Confirm altitude is appended to the GPS capsule when available.
 - Confirm copyright year matches EXIF when available.
 - Confirm output ICC profile is preserved or set to sRGB.
-- Confirm `PicFrame34/contact-sheet.jpg` exists for default source-folder runs.
+- Confirm `PicFrame/<scheme>/<layout>/<format>/contact-sheet.jpg` and `manifest.json` exist for default source-folder runs.
 - Confirm `result/contact-sheet.jpg` exists for explicit `--legacy-task` compatibility runs.
