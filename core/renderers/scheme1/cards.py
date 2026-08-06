@@ -106,25 +106,24 @@ def draw_portrait_card(context):
     main = Image.open(photo_path).convert("RGB")
     raw_w, raw_h = main.size
 
-    # 照片无损放置：照片在卡片中 100% 保持 1:1 原始像素（0 缩放下采样）
-    scale = raw_w / PHOTO_W
+    # 计算原图无损点对点放缩系数 scale (基准 PHOTO_W=936, PHOTO_H=620)
+    scale = max(raw_w / PHOTO_W, raw_h / PHOTO_H)
 
-    photo_box_w = raw_w
-    photo_box_h = raw_h
-    photo_x = round(PHOTO_X * scale)
-    photo_y = round(PHOTO_Y * scale)
-    photo_bottom = photo_y + photo_box_h
-
-    # 卡片总高度随照片实际像素高度自适应延伸
-    info_area_h = round(698 * scale)
+    # 画布强制保持严格 3:4 比例 (1080 x 1440 * scale)
     canvas_w = round(CANVAS_W * scale)
-    canvas_h = photo_bottom + info_area_h
+    canvas_h = round(CANVAS_H * scale)
 
     outer_pad = round(OUTER_PAD * scale)
     card_r = round(CARD_R * scale)
     canvas = new_card_canvas(canvas_w, canvas_h, bg, outer_pad=outer_pad, card_r=card_r)
 
-    photo_box = (photo_x, photo_y, photo_x + photo_box_w, photo_y + photo_box_h)
+    # 照片框区域 contain-fit 居中放置照片
+    photo_box = (
+        round(PHOTO_X * scale),
+        round(PHOTO_Y * scale),
+        round((PHOTO_X + PHOTO_W) * scale),
+        round((PHOTO_Y + PHOTO_H) * scale),
+    )
     paste_contained(
         canvas,
         main,
@@ -139,7 +138,7 @@ def draw_portrait_card(context):
     left_x = round(126 * scale)
     right_x = round(584 * scale)
     text_w = canvas_w - outer_pad - right_x - round(64 * scale)
-    camera_area_y = photo_bottom + round(50 * scale)
+    camera_area_y = round(INFO_Y * scale)
     lens_area_y = camera_area_y + round(300 * scale)
     cam_y = camera_area_y + round(128 * scale)
     lens_y = lens_area_y + round(132 * scale)
@@ -169,32 +168,26 @@ def draw_landscape_card(context):
     main = Image.open(photo_path).convert("RGB")
     raw_w, raw_h = main.size
 
-    # 横版布局无损照片放置：照片在左侧 100% 点对点全尺寸无损 (以基准 912 高度计算 scale)
+    # 横版布局 (portrait source + landscape layout)：基准 1440 x 1080 (比例严格 4:3)
+    # 以照片 912 高度计算 scale
     scale = raw_h / 912
 
-    photo_box_w = raw_w
-    photo_box_h = raw_h
-
-    photo_x = round(84 * scale)
-    photo_y = round(84 * scale)
-
-    panel_x = photo_x + photo_box_w + round(52 * scale)
-    panel_w = round(434 * scale)
-
-    canvas_w = panel_x + panel_w + round(54 * scale)
-    canvas_h = photo_y + photo_box_h + round(84 * scale)
+    canvas_w = round(1440 * scale)
+    canvas_h = round(1080 * scale)
 
     outer_pad = round(OUTER_PAD * scale)
     card_r = round(CARD_R * scale)
     canvas = new_card_canvas(canvas_w, canvas_h, bg, outer_pad=outer_pad, card_r=card_r)
 
+    # 左侧照片框基准：x=84, y=84, h=912, 框宽按最大可用 816
     photo_box = (
-        photo_x,
-        photo_y,
-        photo_x + photo_box_w,
-        photo_y + photo_box_h,
+        round(84 * scale),
+        round(84 * scale),
+        round((84 + 816) * scale),
+        round((84 + 912) * scale),
     )
-    paste_contained(
+    # 靠左、靠上贴合放置，确保左边距 = 上边距 = 下边距 = 84 * scale
+    photo_x, photo_y, fitted_w, fitted_h = paste_contained(
         canvas,
         main,
         photo_box,
@@ -207,7 +200,13 @@ def draw_landscape_card(context):
     draw = ImageDraw.Draw(canvas)
     ink = (30, 30, 30, 255)
     muted = (76, 76, 76, 255)
-    panel_center_x = panel_x + round(panel_w / 2)
+
+    # 右侧面板区域：从照片右边缘 + 52*scale 延伸至 canvas_w - 54*scale
+    photo_right = photo_x + fitted_w
+    panel_left = photo_right + round(52 * scale)
+    panel_right = canvas_w - round(54 * scale)
+    panel_w = max(round(300 * scale), panel_right - panel_left)
+    panel_center_x = round((panel_left + panel_right) / 2)
 
     draw_asset(canvas, camera_png, panel_center_x, round(300 * scale), round(320 * scale), round(224 * scale))
     y = round(438 * scale)
@@ -220,4 +219,6 @@ def draw_landscape_card(context):
     y = draw_centered_wrapped_text(draw, panel_center_x, round(862 * scale), lens_family, ink, round(36 * scale), panel_w, True, max_lines=2, line_gap=round(6 * scale)) + round(16 * scale)
     draw_centered_rich_lens_params(draw, panel_center_x, y, lens_params, muted, round(28 * scale), panel_w, max_lines=2, line_gap=round(8 * scale))
     return canvas
+
+
 
