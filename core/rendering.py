@@ -12,6 +12,10 @@ def dominant_bg(path):
         arr = np.asarray(img).astype(np.float32)
         h, w, _ = arr.shape
         pixels = arr[int(h * 0.05):int(h * 0.95), int(w * 0.05):int(w * 0.95)].reshape(-1, 3)
+        if len(pixels) == 0:
+            pixels = arr.reshape(-1, 3)
+        if len(pixels) == 0:
+            return (240, 240, 240)
         if len(pixels) > 2000:
             pixels = pixels[np.linspace(0, len(pixels) - 1, 2000).astype(int)]
 
@@ -25,8 +29,9 @@ def dominant_bg(path):
                 for i in range(5)
             ])
 
-        rgb = centers[np.bincount(labels, minlength=5).argmax()] / 255.0
-        hue, light, sat = colorsys.rgb_to_hls(*rgb)
+        raw_rgb = centers[np.bincount(labels, minlength=5).argmax()] / 255.0
+        rgb = np.clip(raw_rgb, 0.0, 1.0)
+        hue, light, sat = colorsys.rgb_to_hls(float(rgb[0]), float(rgb[1]), float(rgb[2]))
         light = min(max(light, 0.78), 0.9)
         sat = min(sat * 0.32, 0.16)
         return tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(hue, light, sat))

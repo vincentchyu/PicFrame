@@ -10,6 +10,9 @@ from .config import SRGB_PROFILE
 from .utils import unique_values
 
 
+_EXIF_MEMORY_CACHE = {}
+
+
 @functools.lru_cache(maxsize=256)
 def _cached_run_exif(str_path):
     out = subprocess.check_output(["exiftool", "-json", str_path], text=True)
@@ -17,28 +20,37 @@ def _cached_run_exif(str_path):
 
 
 def run_exif(path):
-    return _cached_run_exif(str(Path(path).resolve()))
+    resolved = Path(path).resolve()
+    if resolved in _EXIF_MEMORY_CACHE:
+        return _EXIF_MEMORY_CACHE[resolved]
+    data = _cached_run_exif(str(resolved))
+    _EXIF_MEMORY_CACHE[resolved] = data
+    return data
 
 
 def run_exif_batch(paths):
     if not paths:
         return {}
     resolved_paths = [Path(p).resolve() for p in paths]
-    str_paths = [str(p) for p in resolved_paths]
-    try:
-        out = subprocess.check_output(["exiftool", "-json", *str_paths], text=True)
-        data = json.loads(out)
-        res = {}
-        for item in data:
-            source_file = item.get("SourceFile")
-            if source_file:
-                resolved_key = Path(source_file).resolve()
-                res[resolved_key] = item
-                # Fill cache
-                _cached_run_exif.cache_parameters() if hasattr(_cached_run_exif, "cache_parameters") else None
-        return res
-    except Exception:
-        return {p: run_exif(p) for p in resolved_paths}
+    uncached_paths = [p for p in resolved_paths if p not in _EXIF_MEMORY_CACHE]
+    if uncached_paths:
+        str_paths = [str(p) for p in uncached_paths]
+        try:
+            out = subprocess.check_output(["exiftool", "-json", *str_paths], text=True)
+            data = json.loads(out)
+            for item in data:
+                source_file = item.get("SourceFile")
+                if source_file:
+                    resolved_key = Path(source_file).resolve()
+                    _EXIF_MEMORY_CACHE[resolved_key] = item
+        except Exception:
+            for p in uncached_paths:
+                try:
+                    run_exif(p)
+                except Exception:
+                    pass
+
+    return {p: _EXIF_MEMORY_CACHE.get(p) or run_exif(p) for p in resolved_paths}
 
 
 

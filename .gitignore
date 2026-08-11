@@ -1,2 +1,7 @@
 /202*/
 /test/
+.agents/
+/__pycache__/
+*.pyc
+.env
+.venv/

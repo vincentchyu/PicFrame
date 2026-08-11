@@ -1,5 +1,6 @@
 import concurrent.futures
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -77,7 +78,8 @@ def generate_batch(
     outputs = []
     if total > 1:
         # 2. 多线程并发生成卡片
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        max_workers = min(8, (os.cpu_count() or 1) + 4)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_item = {
                 executor.submit(
                     make_card,

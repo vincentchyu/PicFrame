@@ -97,5 +97,22 @@ class CompressionResolutionTests(unittest.TestCase):
                 self.assertLess(im.height, 1200)
 
 
+class OptimizationTests(unittest.TestCase):
+    def test_exif_cache_hits_memory(self):
+        from core.metadata import _EXIF_MEMORY_CACHE, run_exif
+        path = Path("tests/test_photo.jpg").resolve()
+        _EXIF_MEMORY_CACHE[path] = {"Model": "TestCamera"}
+        exif = run_exif(path)
+        self.assertEqual(exif.get("Model"), "TestCamera")
+
+    def test_dominant_bg_single_color(self):
+        from core.rendering import dominant_bg
+        with tempfile.NamedTemporaryFile(suffix=".png") as f:
+            img = Image.new("RGB", (10, 10), color=(255, 0, 0))
+            img.save(f.name)
+            bg = dominant_bg(f.name)
+            self.assertEqual(len(bg), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
