@@ -14,7 +14,7 @@
       "default_layout": "portrait"
     },
     "scheme2": {
-      "name": "方案2（Semi-Utils 水印）",
+      "name": "品牌极简水印带",
       "renderer": "core.renderers.scheme2:Scheme2Renderer",
       "output_dir": "scheme2",
       "config": "config/schemes/scheme2/config.yaml",
@@ -25,6 +25,26 @@
       "dependencies": ["PyYAML"],
       "layouts": ["watermark_right_logo"],
       "default_layout": "watermark_right_logo"
+    },
+    "scheme3": {
+      "name": "黑客终端与ASCII解构",
+      "renderer": "core.renderers.scheme3:Scheme3Renderer",
+      "output_dir": "scheme3",
+      "config": "config/schemes/scheme3/config.yaml",
+      "resources": {},
+      "dependencies": ["PyYAML"],
+      "layouts": ["gallery_ascii_terminal", "gallery_ascii_diptych"],
+      "default_layout": "gallery_ascii_terminal"
+    },
+    "scheme4": {
+      "name": "抽象艺术编辑双联",
+      "renderer": "core.renderers.scheme4:Scheme4Renderer",
+      "output_dir": "scheme4",
+      "config": "config/schemes/scheme4/config.yaml",
+      "resources": {},
+      "dependencies": ["PyYAML"],
+      "layouts": ["editorial_diptych", "editorial_guidance", "editorial_asymmetric", "editorial_minimal"],
+      "default_layout": "editorial_diptych"
     }
   }
 }

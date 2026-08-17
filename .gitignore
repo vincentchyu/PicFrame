@@ -1,7 +1,8 @@
 /202*/
-/test/
+/test*/
 .agents/
 /__pycache__/
 *.pyc
 .env
 .venv/
+.local_models/

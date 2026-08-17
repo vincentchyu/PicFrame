@@ -51,6 +51,8 @@ def generate_batch(
     scheme="scheme1",
     compression="none",
     legacy=False,
+    debug=False,
+    photo=None,
 ):
     presentation, layout = normalize_presentation(scheme, layout)
     validate_presentation_requirements(presentation)
@@ -69,15 +71,25 @@ def generate_batch(
     if not photos:
         raise ValueError(f"No photos found in {source_dir}")
 
+    if photo:
+        target_name = Path(photo).name.lower()
+        photos = [p for p in photos if p.name.lower() == target_name or p.stem.lower() == target_name]
+        if not photos:
+            raise ValueError(f"Specified photo '{photo}' not found in {source_dir}")
+
     result_dir.mkdir(parents=True, exist_ok=True)
     total = len(photos)
+
 
     # 1. 一次性批量提取所有照片 EXIF，降至 1 次 exiftool 进程
     exif_map = run_exif_batch(photos)
 
     outputs = []
-    if total > 1:
-        # 2. 多线程并发生成卡片
+    # 针对 scheme4 等调用本地 VLM 模型的方案采用串行执行，避免显存并发过载
+    is_sequential = (presentation.scheme_id == "scheme4") or debug
+
+    if total > 1 and not is_sequential:
+        # 2. 多线程并发生成卡片（针对 scheme1/2/3 等纯本地图形渲染）
         max_workers = min(8, (os.cpu_count() or 1) + 4)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_item = {
@@ -91,6 +103,7 @@ def generate_batch(
                     output_policy,
                     asset_dir,
                     exif_map.get(photo.resolve()),
+                    debug,
                 ): (idx, photo)
                 for idx, photo in enumerate(photos, start=1)
             }
@@ -104,11 +117,11 @@ def generate_batch(
         indexed_outputs.sort(key=lambda item: item[0])
         outputs = [out for _, out in indexed_outputs]
     else:
-        photo = photos[0]
-        if progress_callback:
-            progress_callback("processing", 1, 1, photo, result_dir)
-        outputs.append(
-            make_card(
+        # 串行执行（单张或 VLM 方案）
+        for idx, photo in enumerate(photos, start=1):
+            if progress_callback:
+                progress_callback("processing", idx, total, photo, result_dir)
+            out_path = make_card(
                 photo,
                 result_dir,
                 renderer,
@@ -117,10 +130,11 @@ def generate_batch(
                 output_policy,
                 asset_dir,
                 exif_map.get(photo.resolve()),
+                debug=debug,
             )
-        )
-        if progress_callback:
-            progress_callback("generated", 1, 1, photo, result_dir)
+            outputs.append(out_path)
+            if progress_callback:
+                progress_callback("generated", idx, total, photo, result_dir)
 
 
     if progress_callback:
@@ -155,7 +169,7 @@ def generate_batch(
     }
 
 
-def generate_from_source(source_dir, output_dir=None, progress_callback=None, layout=None, scheme="scheme1", compression="none"):
+def generate_from_source(source_dir, output_dir=None, progress_callback=None, layout=None, scheme="scheme1", compression="none", debug=False, photo=None):
     source_dir = Path(source_dir).resolve()
     presentation, normalized_layout = normalize_presentation(scheme, layout)
     output_root = Path(output_dir).resolve() if output_dir else source_dir / "PicFrame"
@@ -168,10 +182,12 @@ def generate_from_source(source_dir, output_dir=None, progress_callback=None, la
         normalized_layout,
         scheme,
         compression,
+        debug=debug,
+        photo=photo,
     )
 
 
-def generate(task_dir, progress_callback=None, layout=None, scheme="scheme1", compression="none"):
+def generate(task_dir, progress_callback=None, layout=None, scheme="scheme1", compression="none", debug=False, photo=None):
     """Legacy src/result compatibility path; it intentionally skips new nesting."""
     task_dir = Path(task_dir).resolve()
     src_dir = task_dir / "src"
@@ -180,9 +196,10 @@ def generate(task_dir, progress_callback=None, layout=None, scheme="scheme1", co
         raise SystemExit(f"Missing src folder: {src_dir}")
 
     try:
-        result = generate_batch(src_dir, result_dir, task_dir, progress_callback, layout, scheme, compression, legacy=True)
+        result = generate_batch(src_dir, result_dir, task_dir, progress_callback, layout, scheme, compression, legacy=True, debug=debug, photo=photo)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+
 
     print(f"Generated {len(result['outputs'])} cards in {result['result_dir']}")
     for out in result["outputs"]:

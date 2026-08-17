@@ -1,6 +1,8 @@
 import colorsys
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFile
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 def dominant_bg(path):
@@ -271,24 +273,54 @@ def apply_card_compression(canvas, output_policy, target_base=1080):
     return canvas
 
 
-def make_card(photo_path, result_dir, renderer, presentation, layout=None, output_policy=None, asset_dir=None, exif=None):
+def make_card(photo_path, result_dir, renderer, presentation, layout=None, output_policy=None, asset_dir=None, exif=None, debug=False):
     from .output import OutputPolicy
 
     output_policy = output_policy or OutputPolicy()
     layout = str(layout or presentation.default_layout).strip().lower()
     if layout not in presentation.layouts:
         raise ValueError(f"Layout {layout!r} is not supported by {presentation.scheme_id}")
-    effective_layout = layout if is_portrait_photo(photo_path) else presentation.default_layout
+    if presentation.scheme_id == "scheme1":
+        effective_layout = layout if is_portrait_photo(photo_path) else presentation.default_layout
+    else:
+        effective_layout = layout
 
-    context = renderer.prepare_context(photo_path, asset_dir or result_dir.parent, presentation, layout, compression=output_policy.compression, exif=exif)
+    debug_dir = None
+    if debug:
+        debug_dir = result_dir / f"{photo_path.stem}_debug"
+        debug_dir.mkdir(parents=True, exist_ok=True)
 
-    context = RenderContext(**{**context.__dict__, "effective_layout": effective_layout, "compression": output_policy.compression})
+    context = renderer.prepare_context(
+        photo_path,
+        asset_dir or result_dir.parent,
+        presentation,
+        layout,
+        compression=output_policy.compression,
+        exif=exif,
+    )
+
+    context = RenderContext(
+        **{
+            **context.__dict__,
+            "effective_layout": effective_layout,
+            "compression": output_policy.compression,
+            "debug": debug,
+            "debug_dir": debug_dir,
+        }
+    )
     canvas = renderer.apply_overlays(renderer.render(context), context)
     canvas = apply_card_compression(canvas, output_policy)
     icc_profile = source_icc_profile(photo_path, context.exif)
     out = result_dir / f"{photo_path.stem}_card{output_policy.suffix}"
     output_policy.save_card(canvas, out, icc_profile)
+
+    if debug and debug_dir:
+        # 保存一份到 debug 目录作为阶段 5 最终产物 (05_02_final_card.jpg)
+        final_debug_out = debug_dir / f"05_02_final_card{output_policy.suffix}"
+        output_policy.save_card(canvas, final_debug_out, icc_profile)
+
     return out
+
 
 
 def make_contact_sheet(outputs, result_dir, output_policy=None, columns=5):
@@ -305,7 +337,8 @@ def make_contact_sheet(outputs, result_dir, output_policy=None, columns=5):
     sheet = Image.new("RGB", (cell_w * columns, cell_h * rows), (240, 240, 240))
     label_font = font(14)
     for idx, path in enumerate(outputs):
-        im = Image.open(path).convert("RGB")
+        with Image.open(path) as im_src:
+            im = im_src.convert("RGB")
         im.thumbnail((thumb_w, thumb_h), Image.Resampling.LANCZOS)
         cell = Image.new("RGB", (cell_w, cell_h), (246, 246, 246))
         cell.paste(im, ((cell_w - im.width) // 2, 8))

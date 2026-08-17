@@ -17,7 +17,9 @@ def main():
     parser.add_argument("--scheme", choices=sorted(schemes), default="scheme1", help="presentation scheme")
     parser.add_argument("--layout", help="layout within the selected presentation scheme")
     parser.add_argument("--compression", choices=("none", "jpeg"), default="none", help="card output encoding")
+    parser.add_argument("--photo", help="specific photo filename or path to generate (e.g. DSC_001.jpg)")
     parser.add_argument("--legacy-task", help="legacy task folder containing src/")
+    parser.add_argument("--debug", action="store_true", help="enable debug dump of all intermediate pipeline steps into per-photo folders")
     args = parser.parse_args()
 
     if args.source and args.legacy_task:
@@ -27,7 +29,14 @@ def main():
 
     try:
         if args.legacy_task:
-            generate(Path(args.legacy_task), layout=args.layout, scheme=args.scheme, compression=args.compression)
+            generate(
+                Path(args.legacy_task),
+                layout=args.layout,
+                scheme=args.scheme,
+                compression=args.compression,
+                debug=args.debug,
+                photo=args.photo,
+            )
             return 0
         if args.source:
             result = generate_from_source(
@@ -36,6 +45,8 @@ def main():
                 layout=args.layout,
                 scheme=args.scheme,
                 compression=args.compression,
+                debug=args.debug,
+                photo=args.photo,
             )
             print(f"Generated {len(result['outputs'])} cards in {result['result_dir']}")
             for out in result["outputs"]:
@@ -43,6 +54,7 @@ def main():
             if result["contact_sheet"]:
                 print(result["contact_sheet"])
             return 0
+
         return curses.wrapper(run_tui)
     except (FileNotFoundError, NotADirectoryError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

@@ -1,0 +1,176 @@
+base:
+  palette_sample_size: 200
+  default_title: "SILENT DIALOGUE"
+  default_subtitle: ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 抽象几何生成引擎 (Motif Engine) 配置
+# ─────────────────────────────────────────────────────────────────────────────
+motif_engine: "hybrid" # 可选: "hybrid" (推荐: VLM标题策展 + 事实几何母题), "primitive" (纯几何算法), "vlm" (纯大模型生成)
+
+# 几何生成器类型: "triangle" (推荐: 高性能 Delaunay 三角面片, 高精还原), "primitive" (Python 爬山退火)
+generator_type: "triangle"
+
+# 1. Triangle Delaunay 引擎配置 (基于 esimov/triangle 终端工具)
+triangle:
+  bin_path: "triangle"    # 系统已安装的 triangle 命令行路径
+  auto_points: true       # 开启 AI 场景与主体语义自适应动态采样点数决策
+  max_points: 35000       # 最大采样点数安全阈值 (上限约束，防止极端大图过度拟合)
+  min_points: 1200        # 最小采样点数阈值 (下限保障，确保宏观画面结构清晰)
+  default_points: 5000    # 兜底默认点数 (未开启 auto_points 时的基准点数)
+
+  # AI 场景与主体自适应点数映射档位 (基于大模型 Stage 1 视觉解构与 CV 空间事实)
+  scene_point_tiers:
+    portrait: 22000       # 人像/面部特写: 超高精五官与眼神光晶格还原
+    human: 20000          # 人物主体/人文生活
+    architecture: 16000   # 古建/街景/都市: 丰富几何结构与硬边线条
+    wildlife: 14000       # 生物/飞禽走兽: 灵动羽翼与肌肉体态
+    animal: 14000         # 动物主体
+    street: 12000         # 人文街头/生活纪实: 丰富构件与故事细节
+    botanical: 8000       # 树木/花草: 枝桠纹理与自然生长感
+    tree: 8000            # 树木主体
+    mountain: 6000        # 雪山高峰: 刚劲山脊与岩石断层
+    landscape: 5000       # 自然风光/大地地貌: 适度晶格与地貌起伏
+    nature: 5000          # 自然风光
+    seascape: 3000        # 辽阔海景/水面倒影: 大色块波光留白
+    water: 3000           # 水景/湖泊
+    minimalist: 1500      # 极简留白/禅意大漠: 极简宏观立体派构成
+    minimal: 1500         # 极简
+
+  point_rate: 0.075       # 点采样率 (-pr)
+  stroke_width: 0.0       # 边框粗细 (-st, 0 为无描边纯色块)
+  wireframe_mode: 0       # 线框模式 (-wf: 0 无描边, 1 有描边, 2 仅描边)
+  blur_factor: 1          # 模糊因子 (-bf)
+  blur_radius: 2          # 模糊半径 (-bl)
+  edge_factor: 6          # 边缘因子 (-ef)
+  sobel_threshold: 10     # Sobel 阈值 (-so)
+  concurrency: 10         # 并发 Worker 线程数 (-cw)
+  sample_size: 768        # 预采样尺寸 (平衡高精五官与超高速计算)
+
+  # ── 画廊当代艺术：主体聚焦抽色美学 (Selective Chromatic Pop) ──
+  selective_color:
+    enable: true          # 开启“主体保留真实矿物色彩、背景去饱和低彩聚焦”
+    bg_saturation: 0.08   # 背景区域饱和度 (0.0 纯黑白灰度，0.08 保留 8% 极淡典雅冷灰氛围)
+    feather: 0.15         # 主体向背景过渡的柔和羽化半径 (0.15 呈现自然光学光晕过渡)
+    bg_brightness_factor: 1.02 # 背景适度提亮以呼吸融入象牙白底板
+    hero_contrast_boost: 1.05  # 主体色彩对比度适度强化
+
+    # 方案一：象牙白底板 Alpha 渐隐融化 (Alpha Dissolve into Ivory)
+    alpha_fade:
+      enable: false        # 开启背景向画面外边缘平滑消融
+      bg_min_alpha: 0.65  # 背景边缘最小不透明度 (0.35 保持微晶格通透悬浮感)
+      fade_feather: 0.11  # 渐隐向外扩散范围
+
+    # 方案二：暗房冷暖色相微调注入 (Subtle Chromatic Tinting)
+    chromatic_tint:
+      enable: false        # 开启胶片暗房冷矿青/暖砂岩底色注入
+      tint_strength: 0.18 # 色相微调强度 (0.18 呈现温润手工暗房质感)
+
+    # 方案三：多主体视线引力场 (Visual Tension Bridge)
+    tension_bridge:
+      enable: true        # 开启多主体间的视线引力色彩纽带
+      bridge_width: 0.16  # 引力连结通道宽度 (归一化空间)
+      bridge_saturation: 0.30 # 引力通道内保留的色彩饱和度 (30% 呈现若隐若现故事感)
+
+# 2. Primitive 爬山退火引擎配置
+primitive:
+  num_shapes: 220 # 图元数量 (220 个高密退火几何微晶格)
+  shape_type: "triangle" # 图元类型: "triangle"(高精多边形微晶格切面), "combo", "polygon"
+  alpha: 235 # 丝网印不透明度 (235 强硬边版画)
+  sample_size: 256 # 运算拟合尺寸 (256 高清采样捕捉微观五官与骨架)
+  candidate_count: 60 # 候选图元池探索深度
+  mutate_steps: 16 # 爬山微调变异步数
+  blur_radius: 2.8 # 适量高斯模糊涂抹半径 (2.5-3.2 带来极具画廊质感的油画涂抹感)
+  bin_path: "primitive" # 外部 Go primitive CLI 路径 (自动检测系统 PATH)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 视觉大模型 (VLM) 配置
+# ─────────────────────────────────────────────────────────────────────────────
+vlm:
+  enable: true
+  # 选用厂商：可选 "mlx" (Apple Silicon极速), "ollama" (本地Ollama), "gemini" (谷歌云端)
+  provider: "mlx"
+
+  # 流水线模式：可选 "progressive" (三阶段渐进式视觉解构与通用图元转译) 或 "fast" (单阶段极速优化)
+  pipeline_mode: "progressive"
+
+  # 1. MLX / OpenAI 兼容本地端点 (推荐 Apple Silicon: Qwen3-VL-4B-Instruct-MLX-6bit)
+  mlx:
+    base_url: "http://127.0.0.1:8000/v1"
+    api_key: "6624"
+    model: "gemma-4-26b-a4b-it-6bit"
+    timeout: 30
+
+  # 2. Ollama 本地端点配置
+  ollama:
+    model: "qwen3-vl:latest"
+    timeout: 45
+
+  # 3. Google Gemini 配置
+  gemini:
+    model: "gemini-1.5-flash"
+    api_key: "" # 或从环境变量 GEMINI_API_KEY 读取
+
+  # 分析用缩略图最大边长（像素），原图 6000px 压缩至 1024px 节省 35x 算力
+  max_analysis_size: 1024
+  analysis_quality: 85
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 版式配置
+# ─────────────────────────────────────────────────────────────────────────────
+layouts:
+  editorial_diptych:
+    name: "经典几何肌理双联 (200 晶格)"
+    style: "primitive_mesh" # 200 高密微晶格拟合
+    panel_color: "#F3F0E8"
+    title_layout: "center"
+    font_scale: 0.040
+    sub_font_scale: 0.022
+    meta_ratio: 0.55
+    swatch_scale: 0.026
+    photo_ratio_landscape: 0.48
+    photo_ratio_portrait: 0.68
+    motif_scale: 0.48
+    portrait_mode: "horizontal" # 竖图默认采用 4:3 左右横版双联 (与方案一保持一致) vertical 3:4
+
+  editorial_guidance:
+    name: "精工细线草图与焦点解构 (Architectural Line)"
+    style: "architectural_line" # 极简精工矢量线条、等高流线与焦点准星
+    panel_color: "#F3F0E8"
+    title_layout: "center"
+    font_scale: 0.040
+    sub_font_scale: 0.022
+    meta_ratio: 0.55
+    swatch_scale: 0.026
+    photo_ratio_landscape: 0.48
+    photo_ratio_portrait: 0.68
+    motif_scale: 0.48
+    portrait_mode: "horizontal"
+
+  editorial_asymmetric:
+    name: "左对齐策展双联 (Asymmetric)"
+    style: "architectural_line"
+    panel_color: "#F3F0E8"
+    title_layout: "left"
+    font_scale: 0.040
+    sub_font_scale: 0.022
+    meta_ratio: 0.55
+    swatch_scale: 0.026
+    photo_ratio_landscape: 0.48
+    photo_ratio_portrait: 0.68
+    motif_scale: 0.48
+    portrait_mode: "horizontal"
+
+  editorial_minimal:
+    name: "极简留白双联 (Minimal)"
+    style: "minimal_line"
+    panel_color: "#F7F5F0"
+    title_layout: "center"
+    font_scale: 0.035
+    sub_font_scale: 0.019
+    meta_ratio: 0.52
+    swatch_scale: 0.022
+    photo_ratio_landscape: 0.52
+    photo_ratio_portrait: 0.70
+    motif_scale: 0.40
+    portrait_mode: "horizontal"

@@ -113,6 +113,34 @@ SCHEME_PREVIEWS = {
         "右侧 Logo 水印带方案",
         "保持照片原始比例，底部拼接品牌Logo与水印",
     ),
+    "scheme3": (
+        "> [01 / MATRIX DECODE]   ",
+        "|        PHOTO          |",
+        "|    (忠实摄影原片)     |",
+        "+-----------------------+",
+        "|  ████░░░░████░░████  |",
+        "|  ██████████████████  |",
+        "| [02 / TELEMETRY DATA] |",
+        "| MODEL :: NIKON Z6III  |",
+        "| EXIF  :: 120mm · f/5.6|",
+        "+-----------------------+",
+        "黑客终端与 ASCII 结构解构方案",
+        "智能自适应黑客终端 HUD 仪表舱与原图主色 ASCII 解构双联",
+    ),
+    "scheme4": (
+        "┌───────────────────────┐",
+        "│        PHOTO          │",
+        "│    (忠实摄影原片)     │",
+        "├───────────────────────┤",
+        "│ ┌─ ─ ─ ─ ─ ─ ─ ─ ─ ─┐ │",
+        "│ │  ~ ~ ┼ [◎] 01 ~ ~ │ │",
+        "│ └─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘ │",
+        "│     THE BLUE HOUR     │",
+        "│   Light & Dialogue    │",
+        "└───────────────────────┘",
+        "编辑艺术双联方案 (Editorial Diptych)",
+        "原片忠实呈现 + 象牙白面板，支持微观晶格肌理与精工手稿骨架解构",
+    ),
 }
 
 LAYOUT_PREVIEWS = {
@@ -154,6 +182,86 @@ LAYOUT_PREVIEWS = {
         "└───────────────────────┘",
         "底部 Logo 水印带布局",
         "原图比例展示，底部附加曝光参数与品牌标识",
+    ),
+    "gallery_ascii_terminal": (
+        "> [01 / MATRIX DECODE]   ",
+        "|        PHOTO          |",
+        "|    (忠实摄影原片)     |",
+        "+-----------------------+",
+        "|  ████░░░░████░░████  |",
+        "|  ██████████████████  |",
+        "| [02 / TELEMETRY DATA] |",
+        "| MODEL :: NIKON Z6III  |",
+        "| EXIF  :: 120mm · f/5.6|",
+        "+-----------------------+",
+        "智能自适应黑客终端 HUD 装裱",
+        "智能亮暗自适应终端底板 + 极客荧光/深墨绿 HUD 仪表舱",
+    ),
+    "gallery_ascii_diptych": (
+        "┌───────────────────────┐",
+        "│        PHOTO          │",
+        "│    (忠实摄影原片)     │",
+        "├───────────────────────┤",
+        "│  ██░░░░░░░░░░░░░░██  │",
+        "│  ████░░░░████░░████  │",
+        "│  ██████████████████  │",
+        "│ AUTH :: VINCENT CHYU  │",
+        "│     [■ ■ ■ ■] 色卡   │",
+        "└───────────────────────┘",
+        "原片主色 ASCII 解构双联",
+        "原片提取主色背景 + 真实色彩 ASCII 结构画 + 色卡网格",
+    ),
+    "editorial_diptych": (
+        "┌───────────────────────┐",
+        "│        PHOTO          │",
+        "│    (忠实摄影原片)     │",
+        "├───────────────────────┤",
+        "│    ─── [▲][▼] ───     │",
+        "│   (200 晶格几何肌理)  │",
+        "│     THE BLUE HOUR     │",
+        "│   Light & Dialogue    │",
+        "└───────────────────────┘",
+        "经典几何肌理双联 (200 晶格)",
+        "高密微晶格拟合微观光影肌理 + 移动端清晰大字阶",
+    ),
+    "editorial_guidance": (
+        "┌───────────────────────┐",
+        "│        PHOTO          │",
+        "│    (忠实摄影原片)     │",
+        "├───────────────────────┤",
+        "│ ┌─ ─ ─ ─ ─ ─ ─ ─ ─ ─┐ │",
+        "│ │  ~ ~ ┼ [◎] 01 ~ ~ │ │",
+        "│ └─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘ │",
+        "│     AUTUMN GRAZING    │",
+        "│   Slope & Focal Axis  │",
+        "└───────────────────────┘",
+        "精工手稿风与视觉骨架引导",
+        "实线主轮廓 + 辅助虚线 + 光影排线 + 浅彩焦点准星微标",
+    ),
+    "editorial_asymmetric": (
+        "┌───────────────────────┐",
+        "│        PHOTO          │",
+        "│    (忠实摄影原片)     │",
+        "├───────────────────────┤",
+        "│       ── [■][■] • ──  │",
+        "│  FIRST LIGHT          │",
+        "│  The Awakening        │",
+        "└───────────────────────┘",
+        "非对称现代主义画册布局",
+        "右偏几何抽象母题 + 左下角大写衬线标题，张力十足",
+    ),
+    "editorial_minimal": (
+        "┌───────────────────────┐",
+        "│        PHOTO          │",
+        "│    (忠实摄影原片)     │",
+        "├───────────────────────┤",
+        "│                       │",
+        "│      ──── [■] ────    │",
+        "│     SILENT AXIS       │",
+        "│                       │",
+        "└───────────────────────┘",
+        "极简留白空间画册布局",
+        "超高比例象牙色留白 + 极细结构线与色块记忆",
     ),
 }
 
@@ -206,6 +314,12 @@ def choose_layout(stdscr, scheme_id):
         "portrait": "照片源保持 3:4 的比例。",
         "landscape": "照片源使用 4:3 左图卡。",
         "watermark_right_logo": "底部品牌 Logo 水印带。",
+        "gallery_ascii_terminal": "智能自适应明暗黑客终端 + 极客 HUD 仪表舱。",
+        "gallery_ascii_diptych": "原片主色调 + 真实色彩 ASCII 结构画双联。",
+        "editorial_diptych": "经典几何肌理双联 (200 晶格退火拟合)。",
+        "editorial_guidance": "精工手稿风 + 视觉骨架与浅彩双焦点准星。",
+        "editorial_asymmetric": "非对称现代主义画册 + 左下对齐大写衬线标题。",
+        "editorial_minimal": "极简超大留白画册 + 极细结构线与色块记忆。",
     }
     while True:
         stdscr.clear()
@@ -216,7 +330,7 @@ def choose_layout(stdscr, scheme_id):
         for idx, layout in enumerate(options, start=5):
             attr = curses.A_REVERSE if idx - 5 == selected else 0
             marker = "> " if idx - 5 == selected else "  "
-            screen_add(stdscr, idx, 0, f"{marker}{layout:<21} {descriptions.get(layout, '')}", attr)
+            screen_add(stdscr, idx, 0, f"{marker}{layout:<21} {descriptions.get(layout, )}", attr)
 
         current_layout = options[selected]
         preview_data = LAYOUT_PREVIEWS.get(current_layout)
@@ -245,16 +359,17 @@ def choose_layout(stdscr, scheme_id):
 
 
 def choose_compression(stdscr):
-    options = [("none", "不压缩（PNG）"), ("jpeg", "压缩（JPEG）")]
+    options = [("none", "无压缩 (输出原尺寸高精 PNG)"), ("jpeg", "移动端优化 (输出 1080 边长优质 JPEG)")]
     selected = 0
     while True:
         stdscr.clear()
-        screen_add(stdscr, 0, 0, "PicFrame 输出压缩")
-        screen_add(stdscr, 2, 0, "请选择卡片输出格式:")
+        screen_add(stdscr, 0, 0, "PicFrame 输出格式与压缩")
+        screen_add(stdscr, 2, 0, "请选择输出图像格式与压缩策略:")
         screen_add(stdscr, 3, 0, "Enter: 选择   q/Esc: 返回")
-        for idx, (_, label) in enumerate(options, start=5):
-            active = idx - 5 == selected
-            screen_add(stdscr, idx, 0, f"{' >' if active else '  '} {label}", curses.A_REVERSE if active else 0)
+        for idx, (val, desc) in enumerate(options, start=5):
+            attr = curses.A_REVERSE if idx - 5 == selected else 0
+            marker = "> " if idx - 5 == selected else "  "
+            screen_add(stdscr, idx, 0, f"{marker}{val:<8} {desc}", attr)
         stdscr.refresh()
         key = stdscr.getch()
         if key in (ord("q"), 27):
@@ -267,68 +382,31 @@ def choose_compression(stdscr):
             return options[selected][0]
 
 
-def tui_status_callback(stdscr):
-    def callback(stage, index, total, photo, result_dir):
-        stdscr.clear()
-        screen_add(stdscr, 0, 0, "PicFrame generating")
-        screen_add(stdscr, 1, 0, f"Output: {result_dir}")
-        if stage == "processing" and photo:
-            screen_add(stdscr, 3, 0, f"[{index}/{total}] {photo.name}")
-        elif stage == "generated" and photo:
-            screen_add(stdscr, 3, 0, f"[{index}/{total}] generated {photo.stem}_card.png")
-        elif stage == "contact_sheet":
-            screen_add(stdscr, 3, 0, "Building contact-sheet.jpg")
-        elif stage == "done":
-            screen_add(stdscr, 3, 0, f"Done. Generated {total} cards.")
-        stdscr.refresh()
-    return callback
-
-
 def run_tui(stdscr):
     curses.curs_set(0)
-    source_dir = choose_source_dir(stdscr, Path.cwd())
-    if source_dir is None:
+    source = choose_source_dir(stdscr, Path.cwd())
+    if not source:
         return 0
     scheme = choose_scheme(stdscr)
-    if scheme is None:
+    if not scheme:
         return 0
     layout = choose_layout(stdscr, scheme)
-    if layout is None:
+    if not layout:
         return 0
     compression = choose_compression(stdscr)
-    if compression is None:
+    if not compression:
         return 0
 
-    try:
-        result = generate_from_source(
-            source_dir,
-            progress_callback=tui_status_callback(stdscr),
-            layout=layout,
-            scheme=scheme,
-            compression=compression,
-        )
-    except Exception as exc:
-        stdscr.clear()
-        screen_add(stdscr, 0, 0, "PicFrame failed")
-        screen_add(stdscr, 2, 0, str(exc))
-        screen_add(stdscr, 4, 0, "Press any key to exit.")
-        stdscr.refresh()
-        stdscr.getch()
-        return 1
-
-    stdscr.clear()
-    screen_add(stdscr, 0, 0, "PicFrame complete")
-    screen_add(stdscr, 2, 0, f"Source: {result['source_dir']}")
-    screen_add(stdscr, 3, 0, f"Output: {result['result_dir']}")
-    screen_add(stdscr, 4, 0, f"Scheme: {result['scheme']}")
-    screen_add(stdscr, 5, 0, f"Layout: {result['layout']}")
-    screen_add(stdscr, 6, 0, f"Renderer: {result['renderer_id']}")
-    screen_add(stdscr, 7, 0, f"Compression: {result['compression']} ({result['format']})")
-    screen_add(stdscr, 8, 0, f"Cards: {len(result['outputs'])}")
+    curses.endwin()
+    result = generate_from_source(source, scheme=scheme, layout=layout, compression=compression)
+    print(f"\n生成成功！成品已保存至: {result['result_dir']}")
+    for out in result["outputs"]:
+        print(out)
     if result["contact_sheet"]:
-        screen_add(stdscr, 9, 0, f"Contact sheet: {result['contact_sheet']}")
-    screen_add(stdscr, 10, 0, f"Manifest: {result['manifest']}")
-    screen_add(stdscr, 11, 0, "Press any key to exit.")
-    stdscr.refresh()
-    stdscr.getch()
+        print(result["contact_sheet"])
     return 0
+
+
+def launch_tui(start_dir=None):
+    return curses.wrapper(run_tui)
+

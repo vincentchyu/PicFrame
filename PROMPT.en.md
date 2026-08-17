@@ -66,9 +66,13 @@ Presentation schemes and layouts are separate concepts:
 - Scheme configuration expresses only the ID, name, supported layouts, default layout, and renderer ID; coordinates, typography, and drawing details remain in the Python renderer.
 - The renderer ID is resolved through the renderer registry and must select the implementation used for the batch.
 - Every renderer receives the same `RendererContext` contract; scheme-specific assets, configs, dependencies, and overlays stay inside that renderer package.
-- New-mode outputs are isolated under `PicFrame/<scheme>/<layout>/<format>/` and include a `manifest.json` describing the selected scheme, renderer, layout, compression, and files.
 - `scheme2` uses the `watermark_right_logo` watermark-band layout; its configuration is maintained in `config/schemes/scheme2/config.yaml`, with fonts and brand logos under `assets/scheme2/`. It preserves the source aspect ratio and appends a bottom watermark band containing exposure params, lens model, brand logo, date, and copyright.
-- Scheme2 preserves the source ratio and appends a bottom watermark band; its own GPS, logo, and copyright content are not duplicated by scheme1's top/bottom capsules.
+- `scheme3` is the hacker terminal & ASCII structural art diptych scheme; its configuration is maintained in `config/schemes/scheme3/config.yaml`. It generates unified 1:1 square canvas cards with the original photograph strictly preserving its native aspect ratio as the visual hero. It supports `gallery_ascii_terminal` (intelligent light/dark adaptive terminal matting with hacker phosphor/dark green telemetry HUD and pure monospace mechanical font) and `gallery_ascii_diptych` (source photo dominant-color background + local chromatic ASCII structural art diptych). The ASCII engine (`ascii_engine.py`) uses Block character sets (`█▓▒░`), Sobel edge enhancement, and adaptive theme derivation.
+- `scheme4` is the abstract editorial diptych scheme; its configuration is maintained in `config/schemes/scheme4/config.yaml`. Inspired by `photo-abstract-editorial`, it breaks away from conventional EXIF frames by pairing the faithful photograph with a lower ivory panel (`#F3F0E8`), extracted 4-color palette & geometric visual memory motif, and poetic serif title. It supports `editorial_diptych` (200-mesh geometric texture), `editorial_guidance` (architectural fine-line & focal crosshair art), `editorial_asymmetric`, and `editorial_minimal`.
+- Scheme2, Scheme3, and Scheme4 preserve the source ratio and render layout independently without duplicating Scheme1's top/bottom capsules.
+- **Mandatory TUI Wireframe Preview Constraint**: When designing or introducing any new presentation scheme or layout, the AI/developer **MUST** synchronously implement ASCII wireframe layout previews and descriptions in `core/tui.py` (`SCHEME_PREVIEWS`, `LAYOUT_PREVIEWS`, and `choose_layout` descriptions). Empty preview panels in the TUI terminal are strictly unacceptable.
+- **Mandatory Portrait Orientation Left-Right Structural Layout Constraint**: Across ALL present and future presentation schemes (Scheme 3, Scheme 4, and any newly added schemes/layouts) that pair photographs with companion artwork/panels (such as ASCII structural art, abstract visual panels, editorial textures, or metadata sidebars), **Portrait photographs (`photo_h > photo_w`) MUST unconditionally adopt a Left-Right side-by-side structural layout (Left: faithful portrait photo; Right: companion art/ASCII panel + metadata typography + swatches)** rather than top-bottom vertical stacking, preventing excessively elongated cards and preserving balanced gallery diptych proportions. Landscape photographs (`photo_w >= photo_h`) continue using the Top-Bottom vertical structure.
+- **1:1 Square Canvas & Faithful Ratio Balancing Principle**: In diptych / terminal HUD presentation layouts, the canvas outputs as a unified 1:1 square aspect ratio. The original photograph is preserved 100% faithfully in its original aspect ratio as the primary visual hero; the companion abstract/ASCII artwork maintains the exact same aspect ratio as the original photograph, with the modular telemetry HUD dynamically adapting to fill the remainder of the 1:1 square canvas.
 
 ## Assets
 
@@ -461,6 +465,8 @@ This project does not copy the Guizang skill templates. It uses the social-card 
 - `core/renderer.py`: renderer abstraction, dynamic loading, and selected-scheme config/resources/dependencies validation.
 - `core/renderers/scheme1/`: scheme1 package containing renderer (`renderer.py`), original-resolution 3:4/4:3 card drawing (`cards.py`), and gear PNG lookup (`assets.py`).
 - `core/renderers/scheme2/`: scheme2 package containing renderer (`renderer.py`) and original-resolution watermark-band rendering (`watermark.py`).
+- `core/renderers/scheme3/`: scheme3 package containing renderer (`renderer.py`), fine-art gallery matting/shadow rendering (`gallery.py`), and ASCII structural art engine (`ascii_engine.py`) with Block character sets, Sobel edge enhancement, dominant-color extraction, and monospace rasterization.
+- `core/renderers/scheme4/`: scheme4 package containing renderer (`renderer.py`), VLM progressive pipeline (`pipeline.py`), and abstract editorial rendering (`editorial.py`). For complete architecture flowcharts, shared context schema, and interaction guidelines, see `docs/scheme4_architecture_and_workflow.md`.
 - `core/batch.py`: source scanning, output folder selection, batch generation, and legacy task compatibility.
 - `core/renderer.py`: presentation renderer abstraction.
 - `core/output.py`: PNG/JPEG output policy and encoding.
@@ -474,6 +480,7 @@ Modification rules:
 
 - CLI/TUI changes should not touch the rendering core unless required.
 - Scheme-specific layout or image-generation changes should usually stay in the matching `core/renderers/` module.
+- New schemes or layouts must provide corresponding ASCII wireframe previews in `core/tui.py`.
 - EXIF, GPS, ICC, and lens parsing changes should usually stay in `metadata.py`.
 - Asset lookup or model mapping changes should usually stay in the matching renderer resource module and the selected scheme config under `config/schemes/`.
 - Keep `generate_photo_cards.py` as a thin entry point instead of letting it grow back into a thousand-line script.
@@ -483,18 +490,20 @@ Modification rules:
 Before considering a change complete:
 
 - Run the script on a real folder.
+- In the TUI terminal interface, cycle through each scheme and layout to confirm the right-hand ASCII wireframe preview and description render fully without any blank panels.
 - Open at least one landscape photo result.
 - Open at least one portrait photo result if available.
-- Confirm output size is `1080 x 1440`.
+- Confirm output size is `1080 x 1440` (Scheme1) or lossless adaptive dimensions (Scheme2/3).
 - Confirm the main photo ratio is preserved.
 - Confirm camera and lens zones stay fixed.
 - Confirm long exposure parameters compact with ` | `.
 - Confirm long lens text wraps safely.
 - Confirm LensID examples split correctly into family and parameters.
-- Confirm independent `S` in the parameters is rendered in a heavier weight.
-- Confirm GPS appears only when GPS exists.
-- Confirm altitude is appended to the GPS capsule when available.
-- Confirm copyright year matches EXIF when available.
-- Confirm output ICC profile is preserved or set to sRGB.
 - Confirm `PicFrame/<scheme>/<layout>/<format>/contact-sheet.jpg` and `manifest.json` exist for default source-folder runs.
 - Confirm `result/contact-sheet.jpg` exists for explicit `--legacy-task` compatibility runs.
+
+## AI Architecture & Execution Protocol
+
+1. **Pre-Modification Proposal Review**: Before implementing any major architecture or prompt redesigns, the AI Agent MUST first present a clear implementation plan for user review and approval.
+2. **Verification & Execution Boundary**: After code modifications, the AI Agent is strictly limited to verifying code integrity via automated unit tests (`unittest`). The AI Agent MUST NOT autonomously launch heavy, multi-photo VLM inference scripts (`generate_photo_cards.py`). Real batch generation is completely user-controlled and user-executed.
+

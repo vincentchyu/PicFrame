@@ -62,10 +62,13 @@
 - `portrait` / `landscape` 是 `scheme1` 内部的布局选项，不代表独立展示方案。
 - 方案注册统一维护在 `config/presentation_schemes.json`。
 - 每个批次选择一个展示方案，再选择该方案支持的 layout；同一批次不混用多个方案。
-- 新方案应新增配置项和独立 renderer，不应把方案差异继续堆叠到 `portrait` / `landscape` 分支中。
-- 方案配置只表达 ID、名称、支持的 layout、默认 layout 和 renderer ID；具体坐标、字体和绘制细节留在 Python renderer 中。
 - `scheme2` 为右侧 Logo 水印带布局 (`watermark_right_logo`)；配置位于 `config/schemes/scheme2/config.yaml`，字体和品牌 Logo 在 `assets/scheme2/`。其保留照片原始比例并在底部拼接包含曝光参数、镜头型号、品牌 Logo、日期与版权的水印栏。
-- 方案2保留原图比例，在底部追加水印信息带；方案2自己的 GPS、Logo 和版权信息不再叠加方案1的顶部/底部胶囊。
+- `scheme3` 为黑客终端与 ASCII 结构解构方案；配置位于 `config/schemes/scheme3/config.yaml`。其在 1:1 正方形画幅中保留原图原始比例作为绝对视觉主体，支持 `gallery_ascii_terminal`（智能自适应黑客终端 HUD 仪表舱装裱：明亮照片使用主色亮卡纸+深墨绿黑客字，暗色照片使用暗黑底+荧光黑客绿字，全量英文等宽机械字体）及 `gallery_ascii_diptych`（原片提取主色背景 + 真实色彩 ASCII 结构画双联装裱）。ASCII 引擎（`ascii_engine.py`）使用 Block 字符集（`█▓▒░`）、Sobel 边缘增强与自适应明暗主题推导。
+- `scheme4` 为抽象艺术编辑双联方案；配置位于 `config/schemes/scheme4/config.yaml`。其参考 `photo-abstract-editorial` 理念，完全跳出传统参数相框，将原片无缝衔接象牙色面板（`#F3F0E8`），自动提取 4 色调色板与空间几何记忆母题，排版信达雅的诗意英文大写衬线标题。支持 `editorial_diptych`（200 晶格几何肌理）、`editorial_guidance`（精工细线草图与焦点解构）、`editorial_asymmetric` 与 `editorial_minimal`。
+- 方案2、方案3和方案4保留原图比例并在各自独立模块内完成排版渲染，不重复叠加方案1的顶部/底部胶囊。
+- **TUI 方案预览硬性约束**：设计或接入任何新展示方案（Scheme）或新布局（Layout）时，**必须同步在 `core/tui.py` 中补充完整的方案级（`SCHEME_PREVIEWS`）和布局级（`LAYOUT_PREVIEWS`）ASCII 布局线框预览图与描述文本**，以及 `choose_layout` 中的单行说明。严禁在 TUI 界面中出现任何方案或布局预览区空白缺失的情况。
+- **竖图必须采用左右并排结构硬性约束**：在所有现有与未来新增的展示方案（Scheme 3、Scheme 4 及任何新方案/新布局）中，凡涉及摄影作品与附属画幅/面板（如 ASCII 结构画、抽象视觉面板、编辑肌理、元数据侧栏等）组合装裱时，**对于竖画幅照片（`photo_h > photo_w`），一律无条件自动采用【左图右文/左右并排结构】（左侧：忠实摄影原作；右侧：附属 ASCII/艺术面板与参数信息）**，严禁使用上下堆叠导致画面过度细长失衡。横画幅照片（`photo_w >= photo_h`）继续保持【上图下文/上下堆叠结构】。
+- **1:1 正方形画幅自适应与原图主导原则**：在双联/终端 HUD 等装裱布局中，统一输出 1:1 正方形标准画幅。原片 100% 忠实保留原始比例与细节并作为绝对视觉主体（Hero Image）；伴随的抽象卡/ASCII 结构画比例严格等同于原片比例，模块化 HUD 仪表舱动态计算填补 1:1 画布剩余非原图区域。
 
 ## 素材
 
@@ -458,6 +461,8 @@ PicFrame/contact-sheet.jpg
 - `core/renderer.py`：方案 renderer 抽象、动态加载，以及所选方案的 config/resources/dependencies 校验。
 - `core/renderers/scheme1/`：方案1独立包，包含 renderer (`renderer.py`)、原始分辨率 3:4/4:3 卡片绘制 (`cards.py`) 和器材素材查找 (`assets.py`)。
 - `core/renderers/scheme2/`：方案2独立包，包含 renderer (`renderer.py`) 和原始分辨率水印带绘制 (`watermark.py`)。
+- `core/renderers/scheme3/`：方案3独立包，包含 renderer (`renderer.py`)、画廊装裱/微阴影绘制 (`gallery.py`) 和 ASCII 结构解构引擎 (`ascii_engine.py`，Block 字符集、Sobel 边缘增强、核心主色提取与等宽字体光栅化)。
+- `core/renderers/scheme4/`：方案4独立包，包含 renderer (`renderer.py`)、VLM 多阶段视觉流水线 (`pipeline.py`) 和抽象双联绘制 (`editorial.py`)。完整架构流程图与交互技术方案见 `docs/scheme4_architecture_and_workflow.md`。
 - `core/batch.py`：源目录扫描、输出目录、批量生成、旧任务结构兼容。
 - `core/renderer.py`：方案 renderer 抽象。
 - `core/output.py`：PNG/JPEG 输出策略与编码。
@@ -471,6 +476,7 @@ PicFrame/contact-sheet.jpg
 
 - 改 CLI/TUI 时不要碰制图核心。
 - 改某个方案的布局或图像生成时优先在对应的 `core/renderers/` 模块内完成。
+- 新增方案或布局时必须同步在 `core/tui.py` 提供完整的线框预览。
 - 改 EXIF、GPS、ICC、镜头解析时优先在 `metadata.py` 内完成。
 - 改素材搜索或型号映射读取时优先在对应方案的 renderer 资源模块和 `config/schemes/` 配置内完成。
 - 保持 `generate_photo_cards.py` 为薄入口，避免重新变成千行脚本。
@@ -480,9 +486,10 @@ PicFrame/contact-sheet.jpg
 修改完成前检查：
 
 - 用真实目录运行脚本。
+- 在 TUI 终端中切换每个方案和布局，确认右侧布局线框预览图和说明文字完整呈现，无空白缺失。
 - 至少打开一张横图结果。
 - 如有竖图，至少打开一张竖图结果。
-- 确认输出尺寸为 `1080 x 1440`。
+- 确认输出尺寸为 `1080 x 1440`（方案1）或自适应无损分辨率（方案2/3）。
 - 确认主图比例未改变。
 - 确认相机和镜头区域固定。
 - 确认长曝光参数用 ` | ` 合并。

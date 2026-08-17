@@ -1,0 +1,55 @@
+base:
+  artist: Vincent Chyu
+  font_family: "Avenir Next"
+
+layouts:
+
+  gallery_ascii_diptych:
+    background_color: "auto"
+    text_color_primary: "#2C2C2C"
+    text_color_secondary: "#7A7A7A"
+    margin_ratio: 0.04
+    bottom_margin_ratio: 0.08
+    shadow:
+      enable: true
+      opacity: 0.06
+      blur_ratio: 0.015
+      offset_y_ratio: 0.004
+    typography:
+      layout_type: "split"
+      separator: " · "
+      font_scale: 0.013
+    ascii:
+      columns: 100
+      char_set: "block"
+      edge_enhance: true
+      edge_threshold: 30
+      color_mode: "local_chromatic"
+      invert: false
+      font_size: 14
+      panel_height_ratio: 0.35
+      n_palette_colors: 4
+
+  gallery_ascii_terminal:
+    background_color: "auto"
+    margin_ratio: 0.04
+    bottom_margin_ratio: 0.08
+    shadow:
+      enable: true
+      opacity: 0.06
+      blur_ratio: 0.015
+      offset_y_ratio: 0.004
+    typography:
+      layout_type: "split"
+      separator: " · "
+      font_scale: 0.013
+    ascii:
+      columns: 100
+      char_set: "block"
+      edge_enhance: true
+      edge_threshold: 28
+      font_size: 14
+      panel_height_ratio: 0.35
+      n_palette_colors: 4
+
+

@@ -26,9 +26,11 @@ class RendererContext:
     line_items: tuple = ()
     effective_layout: str = ""
     compression: str = "none"
+    debug: bool = False
+    debug_dir: object = None
 
 
-def build_context(photo_path, source_dir, presentation, layout, compression="none", exif=None):
+def build_context(photo_path, source_dir, presentation, layout, compression="none", exif=None, debug=False, debug_dir=None):
     """Build only the shared metadata context; scheme modules supply assets."""
     from .rendering import dominant_bg
 
@@ -59,4 +61,7 @@ def build_context(photo_path, source_dir, presentation, layout, compression="non
         line_items=tuple(item for item in line_items if item),
         effective_layout=layout,
         compression=compression,
+        debug=debug,
+        debug_dir=debug_dir,
     )
+

@@ -210,6 +210,62 @@ def fmt_copyright(exif, artist="Vincent Chyu"):
     return f"© {year} {artist_name} PHOTOGRAPHY - All rights reserved"
 
 
+def fmt_artist(exif, default_artist="Vincent Chyu"):
+    """从 EXIF 中提取纯净摄影作者姓名（清洗掉 ©、年份及冗余后缀），无则回退到 default_artist。"""
+    if not isinstance(exif, dict):
+        exif = {}
+    raw_artist = (
+        exif.get("Artist")
+        or exif.get("By-line")
+        or exif.get("Creator")
+        or exif.get("Photographer")
+        or default_artist
+        or "Vincent Chyu"
+    )
+    clean_artist = re.sub(r"[©\d\-]+", "", str(raw_artist))
+    clean_artist = re.sub(r"(?i)\bphotography\b|\ball rights reserved\b", "", clean_artist).strip()
+    return clean_artist or str(default_artist or "Vincent Chyu").strip()
+
+
+def fmt_editorial_meta_line(exif, default_artist="Vincent Chyu"):
+    """提取对仗工整的画廊级元数据行：[经纬度] · [海拔] · [作者]"""
+    if not isinstance(exif, dict):
+        exif = {}
+
+    items = []
+
+    # 1. 经纬度
+    lat = parse_gps_coord(exif.get("GPSLatitude"), exif.get("GPSLatitudeRef"))
+    lon = parse_gps_coord(exif.get("GPSLongitude"), exif.get("GPSLongitudeRef"))
+    if lat is not None and lon is not None:
+        items.append(f"{format_dms(lat, 'N', 'S')} {format_dms(lon, 'E', 'W')}")
+
+    # 2. 海拔高度
+    alt = fmt_altitude(exif)
+    if alt:
+        items.append(alt.upper())
+
+    # 3. 摄影作者
+    raw_artist = (
+        exif.get("Artist")
+        or exif.get("By-line")
+        or exif.get("Creator")
+        or exif.get("Photographer")
+        or default_artist
+        or "Vincent Chyu"
+    )
+    # 清洗掉可能带有的 "©" 或 "Photography"
+    clean_artist = re.sub(r"[©\d\-]+", "", str(raw_artist))
+    clean_artist = re.sub(r"(?i)\bphotography\b|\ball rights reserved\b", "", clean_artist).strip()
+    if not clean_artist:
+        clean_artist = "Vincent Chyu"
+    items.append(f"BY {clean_artist.upper()}")
+
+    return " · ".join(items) if items else None
+
+
+
+
 def fmt_focal_integer(exif):
     """从 EXIF 中提取整数焦距，回退返回 '--'。"""
     value = str(exif.get("FocalLength") or "--")
