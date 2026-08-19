@@ -55,8 +55,8 @@ Chinese version: [README.md](README.md).
 > 200-mesh geometric texture with simulated annealing fitting. Automatically applies vertical stacked layout for landscape photos and side-by-side spreads for portrait photos.
 
 <p align="center">
-  <img src="img/scheme4_diptych_landscape.jpg" alt="Scheme4 Geometric Diptych (Landscape Stacked · Morning Grove)" width="48%">
-  <img src="img/scheme4_diptych_portrait.jpg" alt="Scheme4 Geometric Diptych (Portrait Side-by-Side · Alpine Path)" width="48%">
+  <img src="img/scheme4_diptych_landscape2.jpg" alt="Scheme4 Geometric Diptych (Landscape Stacked · Morning Grove)" width="48%">
+  <img src="img/scheme4_diptych_portrait2.jpg" alt="Scheme4 Geometric Diptych (Portrait Side-by-Side · Alpine Path)" width="48%">
 </p>
 
 #### 2. Architectural Sketch & Saliency Guidance (`editorial_guidance`)
@@ -64,7 +64,7 @@ Chinese version: [README.md](README.md).
 
 <p align="center">
   <img src="img/scheme4_guidance_landscape.jpg" alt="Scheme4 Architectural Guidance (Landscape Stacked · Urban Shadows)" width="48%">
-  <img src="img/scheme4_guidance_portrait.jpg" alt="Scheme4 Architectural Guidance (Portrait Side-by-Side · Street Cyclist)" width="48%">
+  <img src="img/scheme4_guidance_portrait2.jpg" alt="Scheme4 Architectural Guidance (Portrait Side-by-Side · Street Cyclist)" width="48%">
 </p>
 
 ## Features

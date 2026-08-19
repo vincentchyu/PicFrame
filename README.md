@@ -55,16 +55,21 @@
 > 200 晶格几何肌理退火拟合，横图自动采用优雅上下双联，竖图采用左图右画册并排。
 
 <p align="center">
-  <img src="img/scheme4_diptych_portrait.jpg" alt="Scheme4 几何肌理双联 (竖图左右结构 · 高山花径)" width="75%">
-  <img src="img/scheme4_diptych_landscape.jpg" alt="Scheme4 几何肌理双联 (横图上下结构 · 林间晨光)" width="75%">
+  <img src="img/scheme4_diptych_portrait2.jpg" alt="Scheme4 几何肌理双联 (竖图左右结构 · 高山花径)" width="75%">
+  <img src="img/scheme4_diptych_landscape2.jpg" alt="Scheme4 几何肌理双联 (横图上下结构 · 林间晨光)" width="75%">
 </p>
 
 #### 2. 精工手稿与空间焦点引导 (`editorial_guidance`)
 > 建筑手稿细线网格与多焦点彩色准星解构，完美呈现主体轮廓与空间透视关系。
 
 <p align="center">
-  <img src="img/scheme4_guidance_portrait.jpg" alt="Scheme4 精工手稿双联 (竖图左右结构 · 街头骑行)" width="75%">
+  <img src="img/scheme4_guidance_portrait2.jpg" alt="Scheme4 精工手稿双联 (竖图左右结构 · 街头骑行)" width="75%">
   <img src="img/scheme4_guidance_landscape.jpg" alt="Scheme4 精工手稿双联 (横图上下结构 · 树影街景)" width="75%">
+</p>
+
+#### 3. 执行分解 --debug 产出过程产物
+<p align="center">
+  <img src="img/ex.png" alt="执行" width="75%">
 </p>
 
 ## 功能特性
