@@ -2,9 +2,9 @@
 
 把一个文件夹里的照片批量生成精致的摄影信息卡与水印框架。脚本会读取 EXIF 数据，匹配相机和镜头产品 PNG，提取品牌 Logo，从照片中衍生柔和背景色，保留主图原始比例与无损像素细节，支持原始分辨率无损导出与社交平台（如小红书、朋友圈）输出压缩，并自动生成单张成品卡片和汇总预览图。
 
-这个项目的设计原则来源于 Guizang social card workflow 和本项目的 [PROMPT.md](/Users/vincent/Developer/code/python_code/PicFrame/PROMPT.md)，但最终形态是一个独立、可复用的摄影信息卡与水印渲染 Python 工具。
+这个项目的设计原则来源于 Guizang social card workflow 和本项目的 [PROMPT.md](PROMPT.md)，但最终形态是一个独立、可复用的摄影信息卡与水印渲染 Python 工具。
 
-英文版见 [README.en.md](/Users/vincent/Developer/code/python_code/PicFrame/README.en.md)。
+英文版见 [README.en.md](README.en.md)。
 
 ## 样式展览与方案预览
 

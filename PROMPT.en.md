@@ -1,6 +1,6 @@
 # Photography Info Card Generation Prompt
 
-This document defines the design and implementation constraints for `generate_photo_cards.py`. Chinese version: [PROMPT.md](/Users/vincent/Developer/code/python_code/PicFrame/PROMPT.md).
+This document defines the design and implementation constraints for `generate_photo_cards.py`. Chinese version: [PROMPT.md](PROMPT.md).
 
 The project is inspired by the Guizang social card workflow: the output should read as a polished, publishable social-media image, not a raw EXIF dump. `template.png` is a layout reference, not a pixel-perfect template.
 

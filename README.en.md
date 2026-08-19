@@ -2,9 +2,9 @@
 
 Batch generate polished photography info cards and watermark frames for photos in a source folder. The script reads EXIF metadata, matches camera/lens product PNGs, matches brand logos, derives soft background colors from photos, preserves 100% original resolution and aspect ratio, supports lossless uncompressed exports as well as social media (Xiaohongshu, WeChat, etc.) compression policies, and outputs finished cards plus contact sheet previews.
 
-The visual direction comes from a Guizang-style social card workflow and this project's [PROMPT.en.md](/Users/vincent/Developer/code/python_code/PicFrame/PROMPT.en.md), then expands it into a reusable Python utility for photo presentation cards and watermarks.
+The visual direction comes from a Guizang-style social card workflow and this project's [PROMPT.en.md](PROMPT.en.md), then expands it into a reusable Python utility for photo presentation cards and watermarks.
 
-Chinese version: [README.md](/Users/vincent/Developer/code/python_code/PicFrame/README.md).
+Chinese version: [README.md](README.md).
 
 ## Style Gallery & Scheme Previews
 

@@ -1,6 +1,6 @@
 # 摄影信息卡生成约束
 
-本文档定义 `generate_photo_cards.py` 的设计和实现约束。英文版见 [PROMPT.en.md](/Users/vincent/Developer/code/python_code/PicFrame/PROMPT.en.md)。
+本文档定义 `generate_photo_cards.py` 的设计和实现约束。英文版见 [PROMPT.en.md](PROMPT.en.md)。
 
 项目受到 Guizang social card workflow 的启发：成品应该是一张完整、克制、可发布的社交媒体图片，而不是原始 EXIF 数据表。当前目录中的 `template.png` 只能作为布局参考，不是必须逐像素复刻的模板。
 
