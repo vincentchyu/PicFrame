@@ -17,6 +17,7 @@ PicFrame 是一套专业的摄影艺术卡片生成与微喷排版引擎，支�
 
 ## 🧭 文档快速导航
 
+- ⚙️ **[任务架构、流式进度与遥测洞察系统规范](task_and_progress_architecture.md)**：包含 `Task(Protocol)` 领域模型、两阶段预检（Dry-Run）、三层微步骤日志规范与 TUI 实时双栏遥测面板设计。
 - 📷 **[Scheme 1: 小红书相机镜头卡片技术规范](scheme1_architecture_and_workflow.md)**：包含 3:4 / 4:3 比例自适应、相机/镜头 PNG 检索优先级与柔和背景色算法。
 - 🏷️ **[Scheme 2: 品牌极简水印带技术规范](scheme2_architecture_and_workflow.md)**：包含水印栏四象限结构、品牌 Logo 自动匹配与白边装裱。
 - 🖥️ **[Scheme 3: 黑客终端与 ASCII 结构解构技术规范](scheme3_architecture_and_workflow.md)**：包含自适应黑客终端 HUD 仪表舱（`gallery_ascii_terminal`）与原色 ASCII 字符解构双联（`gallery_ascii_diptych`），1:1 正方形画幅与沉底防溢出排版。

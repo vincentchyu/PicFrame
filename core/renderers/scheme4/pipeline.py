@@ -215,6 +215,9 @@ def _synthesize_focus_features_fallback(s1_data: dict, s2_data: dict = None) -> 
     }
 
 
+from ...domain.events import EventLevel, PipelineStage, ProgressEvent
+
+
 class MultiStageVisionPipeline:
     """四阶段视觉解构、艺术造型特征抽象与专属 SVG 合成流水线协调器"""
 
@@ -223,13 +226,13 @@ class MultiStageVisionPipeline:
         self.vlm_cfg = vlm_cfg or {}
         self.provider_name = self.vlm_cfg.get("provider", "mlx")
 
-    def run(self, img_bytes: bytes, filename: str, debug_dir=None, geo_context=None) -> dict | None:
+    def run(self, img_bytes: bytes, filename: str, debug_dir=None, geo_context=None, step_callback=None) -> dict | None:
         mode = self.vlm_cfg.get("pipeline_mode", "progressive")
         if mode == "fast":
-            return self.run_fast(img_bytes, filename, debug_dir=debug_dir, geo_context=geo_context)
-        return self.run_progressive(img_bytes, filename, debug_dir=debug_dir, geo_context=geo_context)
+            return self.run_fast(img_bytes, filename, debug_dir=debug_dir, geo_context=geo_context, step_callback=step_callback)
+        return self.run_progressive(img_bytes, filename, debug_dir=debug_dir, geo_context=geo_context, step_callback=step_callback)
 
-    def run_progressive(self, img_bytes: bytes, filename: str, debug_dir=None, geo_context=None) -> dict | None:
+    def run_progressive(self, img_bytes: bytes, filename: str, debug_dir=None, geo_context=None, step_callback=None) -> dict | None:
         """
         运行四阶段渐进式流水线：
         1. 视觉解构与空间锚定 (Stage 1)
@@ -237,6 +240,19 @@ class MultiStageVisionPipeline:
         3. 核心主焦点艺术造型理论特征抽象 (Stage 3 - NEW)
         4. 定制化极简艺术矢量 SVG / 几何图元合成 (Stage 4)
         """
+        def _report(step_tag, msg, level=EventLevel.INFO, **details):
+            if step_callback:
+                step_callback(
+                    ProgressEvent(
+                        stage=PipelineStage.RENDERING,
+                        level=level,
+                        message=msg,
+                        step_tag=step_tag,
+                        details=details,
+                    )
+                )
+
+        _report("[VLM]", f"🚀 启动四阶段视觉解构与造型理论抽象流水线: {filename}", engine=self.provider_name)
         print(f"\n[VLM Pipeline] 🚀 启动四阶段视觉解构、造型理论抽象与定制 SVG 矢量流水线: {filename}")
         if geo_context and (geo_context.get("gps") or geo_context.get("altitude")):
             gps_info = geo_context.get("gps", "")
@@ -277,10 +293,12 @@ class MultiStageVisionPipeline:
         hero_focus = foci[0] if (foci and isinstance(foci, list) and len(foci) > 0 and isinstance(foci[0], dict)) else (s1_data.get("protagonist") or (subjects[0] if subjects else {}))
 
         print(f"[VLM Stage 1/5] ✅ 场景: {scene_type} | 氛围: {season_light or mood} | 耗时: {s1_cost:.2f}s")
+        hero_desc = None
         if hero_focus and isinstance(hero_focus, dict) and hero_focus.get("label"):
             c = hero_focus.get("center") or [0.5, 0.5]
             lbl = hero_focus.get("label")
-            print(f"[VLM Stage 1/5] 🌟 核心主角: {lbl}@(x:{c[0]}, y:{c[1]})")
+            hero_desc = f"{lbl} @ ({c[0]:.2f}, {c[1]:.2f})"
+            print(f"[VLM Stage 1/5] 🌟 核心主角: {hero_desc}")
 
         raw_pal = s1_data.get("palette", {})
         palette = {
@@ -289,6 +307,14 @@ class MultiStageVisionPipeline:
             "neutral":  _hex_to_rgb(raw_pal.get("neutral"),  (160, 175, 190)),
             "accent":   _hex_to_rgb(raw_pal.get("accent"),   (160, 90, 50)),
         }
+        _report(
+            "[VLM 1/5]",
+            f"🔍 场景: {scene_type} | 主角: {hero_desc or '自然地貌'}",
+            scene_type=scene_type,
+            mood=season_light or mood,
+            hero_focus=hero_desc,
+            palette_hex=raw_pal,
+        )
 
         # -------------------------------------------------------------------
         # Stage 2: 文学策展与诗性标题 [40%]
@@ -321,6 +347,12 @@ class MultiStageVisionPipeline:
             subtitle = season_light
 
         print(f"[VLM Stage 2/5] ✅ 标题: \"{title}\" | 副标: \"{subtitle}\" | 耗时: {s2_cost:.2f}s")
+        _report(
+            "[VLM 2/5]",
+            f"✍️ 策展标题: \"{title}\" | 副标: \"{subtitle}\"",
+            title=title,
+            subtitle=subtitle,
+        )
 
         # -------------------------------------------------------------------
         # Stage 3: 核心主焦点艺术造型理论特征抽象 [60%]
@@ -344,6 +376,12 @@ class MultiStageVisionPipeline:
 
         concept_title = s3_features_data.get("curatorial_abstract_metaphor", {}).get("formal_concept_title", "FORMAL ABSTRACTION")
         print(f"[VLM Stage 3/5] ✅ 抽象概念: \"{concept_title}\" | 耗时: {s3_f_cost:.2f}s (已保留 03_stage3_focus_features.json)")
+        _report(
+            "[VLM 3/5]",
+            f"🎨 艺术理论: \"{concept_title}\" (康定斯基/克利)",
+            concept_title=concept_title,
+            art_theory="Kandinsky & Klee Abstraction",
+        )
 
         # -------------------------------------------------------------------
         # Stage 4: 几何图元与抽色美学工序 [80%]
@@ -446,6 +484,13 @@ class MultiStageVisionPipeline:
         else:
             print(f"[Stage 4/5] ✅ 细线草图模式：已完成空间地貌与核心主体焦点解构 | 耗时: {s4_cost:.2f}s")
 
+        _report(
+            "[VLM 4/5]",
+            f"🧩 几何工序: 定制 SVG ({len(svg_code) if svg_code else 0} 字符)",
+            geometry_mode=f"Delaunay/SVG ({layout_style or 'hybrid'})",
+            svg_len=len(svg_code) if svg_code else 0,
+        )
+
         return {
             "title": title,
             "subtitle": subtitle,
@@ -465,8 +510,21 @@ class MultiStageVisionPipeline:
             }
         }
 
-    def run_fast(self, img_bytes: bytes, filename: str, debug_dir=None, geo_context=None) -> dict | None:
+    def run_fast(self, img_bytes: bytes, filename: str, debug_dir=None, geo_context=None, step_callback=None) -> dict | None:
         """单阶段极速优化模式 (直接输出 SVG)"""
+        def _report(step_tag, msg, level=EventLevel.INFO, **details):
+            if step_callback:
+                step_callback(
+                    ProgressEvent(
+                        stage=PipelineStage.RENDERING,
+                        level=level,
+                        message=msg,
+                        step_tag=step_tag,
+                        details=details,
+                    )
+                )
+
+        _report("[VLM Fast]", f"⚡ 启动极速模式分析 (SVG 生成): {filename}", engine=self.provider_name)
         print(f"\n[VLM Fast] ⚡ 启动极速模式分析 (SVG 生成): {filename}")
         t0 = time.time()
         fast_user_prompt = (
@@ -517,6 +575,16 @@ class MultiStageVisionPipeline:
         print(f"[VLM Fast] 👁️  场景: {scene_type} | 耗时: {cost:.2f}s")
         print(f"[VLM Fast] ✅ 标题: \"{title}\" | 副标: \"{subtitle}\"")
         print(f"[VLM Fast] 📐 生成定制 SVG ({len(svg_code)} 字符)\n")
+
+        _report(
+            "[VLM Fast]",
+            f"✅ 场景: {scene_type} | 标题: \"{title}\"",
+            scene_type=scene_type,
+            title=title,
+            subtitle=subtitle,
+            palette_hex=raw_pal,
+            svg_len=len(svg_code) if svg_code else 0,
+        )
 
         return {
             "title": title,

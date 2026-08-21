@@ -382,6 +382,372 @@ def choose_compression(stdscr):
             return options[selected][0]
 
 
+import queue
+import threading
+import time
+
+from .domain.events import EventLevel, PipelineStage, ProgressEvent
+from .domain.task import TaskSummary
+from .plan import plan_batch
+
+
+def confirm_plan(stdscr, source_dir, scheme_id, layout, compression):
+    """展示预检 (Dry-Run / Plan) 结果与参数清单，等待用户确认执行。"""
+    stdscr.clear()
+    screen_add(stdscr, 0, 0, "PicFrame 任务预检与体检 (Plan / Dry-Run)", curses.A_BOLD)
+    screen_add(stdscr, 1, 0, "正在快速扫描元数据并评估依赖...", curses.A_DIM)
+    stdscr.refresh()
+
+    plan_res = plan_batch(source_dir, scheme=scheme_id, layout=layout)
+    if plan_res.total_photos == 0:
+        stdscr.clear()
+        screen_add(stdscr, 0, 0, "PicFrame 任务预检失败", curses.A_BOLD)
+        screen_add(stdscr, 2, 0, f"源路径: {source_dir}")
+        for idx, w in enumerate(plan_res.warnings, start=4):
+            screen_add(stdscr, idx, 0, f"⚠️  {w.reason}")
+            if w.suggestion:
+                screen_add(stdscr, idx + 1, 4, f"建议: {w.suggestion}", curses.A_DIM)
+        screen_add(stdscr, len(plan_res.warnings) * 2 + 6, 0, "按任意键返回...")
+        stdscr.refresh()
+        stdscr.getch()
+        return False
+
+    while True:
+        stdscr.clear()
+        height, width = stdscr.getmaxyx()
+        screen_add(stdscr, 0, 0, "PicFrame 任务预检就绪 (Plan / Ready)", curses.A_BOLD)
+        screen_add(stdscr, 1, 0, "─" * min(width - 2, 60), curses.A_DIM)
+
+        screen_add(stdscr, 2, 0, f"📁 源文件夹: {source_dir}")
+        screen_add(stdscr, 3, 0, f"🎨 渲染方案: {scheme_id} ({layout})")
+        screen_add(stdscr, 4, 0, f"📦 输出格式: {'高精 PNG' if compression == 'none' else '移动端 JPEG'}")
+        screen_add(stdscr, 5, 0, f"📊 待处理照片: {plan_res.total_photos} 张 (就绪 {plan_res.ready_count} 张)")
+        screen_add(stdscr, 6, 0, f"⏱️ 预估总耗时: 约 {plan_res.estimated_duration_sec:.1f} 秒")
+        screen_add(stdscr, 7, 0, f"🛰️ GPS 覆盖度: {plan_res.details.get('gps_coverage', '未知')}")
+
+        cams = plan_res.details.get("detected_cameras", [])
+        if cams:
+            screen_add(stdscr, 8, 0, f"📷 检测机身: {', '.join(cams[:2])}")
+        lenses = plan_res.details.get("detected_lenses", [])
+        if lenses:
+            screen_add(stdscr, 9, 0, f"🔍 检测镜头: {', '.join(lenses[:2])}")
+
+        row = 11
+        if plan_res.warnings:
+            screen_add(stdscr, row, 0, "⚠️  体检告警提示:", curses.A_BOLD)
+            row += 1
+            for w in plan_res.warnings[:3]:
+                screen_add(stdscr, row, 2, f"• {w.reason}")
+                row += 1
+
+        screen_add(stdscr, row + 1, 0, "─" * min(width - 2, 60), curses.A_DIM)
+        screen_add(stdscr, row + 2, 0, "Enter: 立即启动执行   q/Esc: 返回修改参数", curses.A_STANDOUT)
+        stdscr.refresh()
+
+        key = stdscr.getch()
+        if key in (ord("q"), 27):
+            return False
+        if key in (curses.KEY_ENTER, 10, 13):
+            return True
+
+
+def _init_tui_colors():
+    """初始化 TUI 彩色主题配对"""
+    if curses.has_colors():
+        try:
+            curses.start_color()
+            curses.use_default_colors()
+            curses.init_pair(1, curses.COLOR_GREEN, -1)    # 绿色：成功/重点
+            curses.init_pair(2, curses.COLOR_CYAN, -1)     # 青色：AI/VLM/地貌主体
+            curses.init_pair(3, curses.COLOR_MAGENTA, -1)  # 洋红：几何/SVG/ASCII
+            curses.init_pair(4, curses.COLOR_YELLOW, -1)   # 黄色：告警
+            curses.init_pair(5, curses.COLOR_RED, -1)      # 红色：错误
+        except Exception:
+            pass
+
+
+def _get_event_attr(ev: ProgressEvent) -> int:
+    """根据微步骤事件的标签与级别返回色彩与字体修饰"""
+    tag = ev.step_tag.upper()
+    has_color = curses.has_colors()
+
+    if ev.level == EventLevel.ERROR:
+        return curses.color_pair(5) | curses.A_BOLD if has_color else curses.A_STANDOUT
+    if ev.level == EventLevel.WARN:
+        return curses.color_pair(4) | curses.A_BOLD if has_color else curses.A_STANDOUT
+    if ev.level == EventLevel.SUCCESS or "[DONE]" in tag:
+        return curses.color_pair(1) | curses.A_BOLD if has_color else curses.A_BOLD
+
+    if "[VLM" in tag or "[SPATIAL]" in tag:
+        return curses.color_pair(2) if has_color else curses.A_NORMAL
+    if "[ASCII]" in tag or "[SOBEL]" in tag or "[GEOMETRIC]" in tag or "[SVG]" in tag:
+        return curses.color_pair(3) if has_color else curses.A_NORMAL
+    if "[ASSET]" in tag or "[LOGO]" in tag or "[EXIF]" in tag:
+        return curses.color_pair(1) if has_color else curses.A_NORMAL
+
+    return curses.A_NORMAL
+
+
+def render_execution_and_summary(stdscr, source, scheme, layout, compression):
+    """在 TUI 内部启动后台线程执行渲染，前台平滑刷新进度条、彩色微步骤与方案专属遥测面板。"""
+    _init_tui_colors()
+    event_queue = queue.Queue()
+    result_holder = {}
+    error_holder = {}
+
+    def worker():
+        try:
+            res = generate_from_source(
+                source,
+                scheme=scheme,
+                layout=layout,
+                compression=compression,
+                event_callback=event_queue.put,
+            )
+            result_holder["result"] = res
+        except Exception as exc:
+            error_holder["error"] = exc
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+
+    stdscr.nodelay(True)
+    stdscr.timeout(50)
+
+    recent_logs: list[ProgressEvent] = []
+    current_stage = PipelineStage.SCANNING
+    current_index = 0
+    total_items = 0
+    current_msg = "正在初始化流水线..."
+    current_photo = ""
+    telemetry_facts: dict = {}
+
+    while t.is_alive() or not event_queue.empty():
+        while True:
+            try:
+                ev: ProgressEvent = event_queue.get_nowait()
+                current_stage = ev.stage
+                current_msg = ev.message
+                if ev.current_index:
+                    current_index = ev.current_index
+                if ev.total_items:
+                    total_items = ev.total_items
+                if ev.photo_path:
+                    # 切换照片时清理上一张的部分瞬时遥测
+                    if current_photo != ev.photo_path.name:
+                        current_photo = ev.photo_path.name
+                        telemetry_facts = {}
+
+                # 累积当前照片专属的客制化业务数据
+                if ev.details:
+                    telemetry_facts.update(ev.details)
+
+                recent_logs.append(ev)
+                if len(recent_logs) > 9:
+                    recent_logs.pop(0)
+            except queue.Empty:
+                break
+
+        # 绘制实时仪表板
+        stdscr.clear()
+        height, width = stdscr.getmaxyx()
+        green_attr = curses.color_pair(1) | curses.A_BOLD if curses.has_colors() else curses.A_BOLD
+        cyan_attr = curses.color_pair(2) if curses.has_colors() else curses.A_NORMAL
+        magenta_attr = curses.color_pair(3) if curses.has_colors() else curses.A_NORMAL
+        dim_attr = curses.A_DIM
+
+        screen_add(stdscr, 0, 0, "⚡ PicFrame 摄影卡片批量渲染流水线", curses.A_BOLD)
+        screen_add(stdscr, 1, 0, "─" * min(width - 2, 78), dim_attr)
+
+        # 进度条
+        pct = (current_index / total_items) if total_items > 0 else 0.0
+        bar_len = max(10, min(width - 30, 36))
+        filled = int(bar_len * pct)
+        bar_str = f"[{'█' * filled}{'░' * (bar_len - filled)}] {int(pct * 100)}%"
+        screen_add(stdscr, 3, 0, f"阶段: {current_stage.value}  ({current_index}/{total_items})", curses.A_BOLD)
+        screen_add(stdscr, 4, 0, bar_str, green_attr)
+
+        screen_add(stdscr, 6, 0, f"当前任务: {current_msg}")
+        if current_photo:
+            screen_add(stdscr, 7, 0, f"正在处理: {current_photo}  |  方案: {scheme} ({layout})", dim_attr)
+
+        # 判断是否双栏显示遥测面板
+        is_split = width >= 80
+        left_w = min(width // 2 + 2, 48) if is_split else width
+
+        # 左栏：微步骤日志
+        screen_add(stdscr, 9, 0, "📜 实时微步骤事件日志:", curses.A_BOLD)
+        for idx, log_ev in enumerate(recent_logs, start=10):
+            if idx >= height - 2:
+                break
+            tag = f"{log_ev.step_tag} " if log_ev.step_tag else ""
+            attr = _get_event_attr(log_ev)
+            msg_text = f"• {tag}{log_ev.message}"
+            if is_split:
+                safe_len = left_w - 4
+                msg_text = msg_text[:safe_len]
+            screen_add(stdscr, idx, 0, msg_text, attr)
+
+        # 右栏：方案专属客制化业务数据与遥测面板 (Telemetry Inspector)
+        if is_split:
+            rx = left_w + 2
+            for ry in range(9, min(height - 1, 20)):
+                screen_add(stdscr, ry, rx - 2, "│", dim_attr)
+
+            screen_add(stdscr, 9, rx, "🛰️ 业务数据与遥测洞察 (Telemetry):", curses.A_BOLD)
+            r_row = 10
+
+            if scheme == "scheme4":
+                # 方案4 VLM 专属语义事实
+                st = telemetry_facts.get("scene_type")
+                mood = telemetry_facts.get("mood")
+                hero = telemetry_facts.get("hero_focus")
+                title = telemetry_facts.get("title")
+                subtitle = telemetry_facts.get("subtitle")
+                art = telemetry_facts.get("concept_title")
+                pal = telemetry_facts.get("palette_hex")
+                geom = telemetry_facts.get("geometry_mode")
+                svg_l = telemetry_facts.get("svg_len")
+
+                if st or mood:
+                    screen_add(stdscr, r_row, rx, f"├─ 场景地貌: {st or '自然'} / {mood or '原画光影'}", cyan_attr)
+                    r_row += 1
+                if hero:
+                    screen_add(stdscr, r_row, rx, f"├─ 核心主角: {hero}", cyan_attr)
+                    r_row += 1
+                if title:
+                    screen_add(stdscr, r_row, rx, f"├─ 策展标题: \"{title}\"", green_attr)
+                    r_row += 1
+                if subtitle:
+                    screen_add(stdscr, r_row, rx, f"├─ 诗性副标: \"{subtitle}\"", dim_attr)
+                    r_row += 1
+                if art:
+                    screen_add(stdscr, r_row, rx, f"├─ 艺术理论: {art}", magenta_attr)
+                    r_row += 1
+                if pal and isinstance(pal, dict):
+                    hex_str = " ".join([f"{k}:{v}" for k, v in list(pal.items())[:3]])
+                    screen_add(stdscr, r_row, rx, f"├─ 提取色板: {hex_str}", green_attr)
+                    r_row += 1
+                if geom or svg_l:
+                    screen_add(stdscr, r_row, rx, f"└─ 几何工序: {geom or 'Delaunay'} ({svg_l or 0} 字符)", magenta_attr)
+                    r_row += 1
+                if r_row == 10:
+                    screen_add(stdscr, r_row, rx, "├─ 等待 VLM 视觉大模型深度解构...", dim_attr)
+
+            elif scheme == "scheme3":
+                # 方案3 极客 ASCII 遥测
+                cam = telemetry_facts.get("camera")
+                gps = telemetry_facts.get("gps")
+                bg = telemetry_facts.get("bg_color")
+                charset = telemetry_facts.get("charset")
+                kernel = telemetry_facts.get("edge_kernel")
+
+                if cam:
+                    screen_add(stdscr, r_row, rx, f"├─ 机身型号: {cam}", green_attr)
+                    r_row += 1
+                if gps:
+                    screen_add(stdscr, r_row, rx, f"├─ GPS遥测: {gps}", green_attr)
+                    r_row += 1
+                if kernel:
+                    screen_add(stdscr, r_row, rx, f"├─ 边缘算子: {kernel} (梯度量化完成)", cyan_attr)
+                    r_row += 1
+                if charset:
+                    screen_add(stdscr, r_row, rx, f"├─ 字符矩阵: 48×64 ({charset})", magenta_attr)
+                    r_row += 1
+                if bg:
+                    screen_add(stdscr, r_row, rx, f"└─ 终端基底: RGB{bg} (自适应明暗)", dim_attr)
+                    r_row += 1
+
+            elif scheme == "scheme2":
+                # 方案2 水印带参数
+                cam = telemetry_facts.get("camera")
+                lens = telemetry_facts.get("lens")
+                logo = telemetry_facts.get("brand_logo")
+                mode = telemetry_facts.get("mode")
+
+                if cam or lens:
+                    screen_add(stdscr, r_row, rx, f"├─ 器材组合: {cam or ''} {lens or ''}", green_attr)
+                    r_row += 1
+                if logo:
+                    screen_add(stdscr, r_row, rx, f"├─ 品牌Logo: {logo} (右侧布局)", cyan_attr)
+                    r_row += 1
+                if mode:
+                    screen_add(stdscr, r_row, rx, f"└─ 水印算法: {mode} (无损拼接)", dim_attr)
+                    r_row += 1
+
+            else:
+                # 方案1 极简卡片参数
+                cam = telemetry_facts.get("camera")
+                lens = telemetry_facts.get("lens")
+                exp = telemetry_facts.get("exposure")
+                c_asset = telemetry_facts.get("camera_asset")
+                l_asset = telemetry_facts.get("lens_asset")
+                bg = telemetry_facts.get("bg_rgb")
+
+                if cam or lens:
+                    screen_add(stdscr, r_row, rx, f"├─ 器材型号: {cam or ''} | {lens or ''}", green_attr)
+                    r_row += 1
+                if exp:
+                    screen_add(stdscr, r_row, rx, f"├─ 曝光参数: {exp}", cyan_attr)
+                    r_row += 1
+                if c_asset or l_asset:
+                    screen_add(stdscr, r_row, rx, f"├─ 图标匹配: 机身[{c_asset or '默认'}] 镜头[{l_asset or '默认'}]", magenta_attr)
+                    r_row += 1
+                if bg:
+                    screen_add(stdscr, r_row, rx, f"└─ 软调色板: RGB{bg}", dim_attr)
+                    r_row += 1
+
+        stdscr.refresh()
+        stdscr.getch()  # 吞噬非阻塞按键
+        time.sleep(0.03)
+
+    t.join()
+    stdscr.nodelay(False)
+
+    if "error" in error_holder:
+        stdscr.clear()
+        screen_add(stdscr, 0, 0, "❌ PicFrame 执行遇到严重错误", curses.A_BOLD)
+        screen_add(stdscr, 2, 0, f"错误原因: {error_holder['error']}")
+        screen_add(stdscr, 4, 0, "按任意键退出...")
+        stdscr.refresh()
+        stdscr.getch()
+        return 1
+
+    # 渲染任务结算卡片
+    res = result_holder.get("result", {})
+    summary: TaskSummary = res.get("summary")
+    while True:
+        stdscr.clear()
+        height, width = stdscr.getmaxyx()
+        screen_add(stdscr, 0, 0, "🎉 PicFrame 摄影卡片批量生成完毕！", curses.A_BOLD)
+        screen_add(stdscr, 1, 0, "─" * min(width - 2, 70), curses.A_DIM)
+
+        green_attr = curses.color_pair(1) | curses.A_BOLD if curses.has_colors() else curses.A_BOLD
+        screen_add(stdscr, 3, 0, f"✅ 成功生成: {summary.success} / {summary.total} 张", green_attr)
+        screen_add(stdscr, 4, 0, f"⏱️ 实际总耗时: {summary.elapsed_seconds:.2f} 秒")
+        screen_add(stdscr, 5, 0, f"📁 成品目录: {res.get('result_dir')}")
+        if summary.contact_sheet:
+            screen_add(stdscr, 6, 0, f"🖼️ 摄影总览联系单: {summary.contact_sheet.name}")
+        if summary.report_path:
+            screen_add(stdscr, 7, 0, f"📑 生成结算报告: {summary.report_path.name}")
+
+        row = 9
+        if summary.warnings:
+            screen_add(stdscr, row, 0, f"⚠️  告警记录 ({len(summary.warnings)} 条):", curses.A_BOLD)
+            row += 1
+            for w in summary.warnings[:4]:
+                screen_add(stdscr, row, 2, f"• {w.reason}")
+                row += 1
+
+        screen_add(stdscr, row + 2, 0, "按 Enter 或 q/Esc 返回主工作台...", curses.A_STANDOUT)
+        stdscr.refresh()
+        key = stdscr.getch()
+        if key in (curses.KEY_ENTER, 10, 13, ord("q"), 27, ord(" ")):
+            break
+
+    return 0
+
+
 def run_tui(stdscr):
     curses.curs_set(0)
     source = choose_source_dir(stdscr, Path.cwd())
@@ -397,16 +763,15 @@ def run_tui(stdscr):
     if not compression:
         return 0
 
-    curses.endwin()
-    result = generate_from_source(source, scheme=scheme, layout=layout, compression=compression)
-    print(f"\n生成成功！成品已保存至: {result['result_dir']}")
-    for out in result["outputs"]:
-        print(out)
-    if result["contact_sheet"]:
-        print(result["contact_sheet"])
-    return 0
+    # 预检与体检确认
+    if not confirm_plan(stdscr, source, scheme, layout, compression):
+        return 0
+
+    # 启动 TUI 实时进度与结算仪表板
+    return render_execution_and_summary(stdscr, source, scheme, layout, compression)
 
 
 def launch_tui(start_dir=None):
     return curses.wrapper(run_tui)
+
 

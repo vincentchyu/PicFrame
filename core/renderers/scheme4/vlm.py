@@ -319,7 +319,13 @@ def _extract_json_from_text(text: str) -> dict | None:
 # 统一分析入口 (外部调用)
 # ---------------------------------------------------------------------------
 
-def analyze_photo_with_vlm(photo_path, vlm_cfg=None, debug_dir=None, geo_context=None):
+def analyze_photo_with_vlm(
+    photo_path: str | Path,
+    vlm_cfg: dict | None = None,
+    debug_dir: str | Path | None = None,
+    geo_context: dict | None = None,
+    step_callback=None,
+) -> dict | None:
     """
     统一入口：使用配置中指定的 Provider（MLX/Ollama/Gemini）深度分析照片。
     基于 MultiStageVisionPipeline 执行多阶段解构或极速分析。
@@ -367,7 +373,13 @@ def analyze_photo_with_vlm(photo_path, vlm_cfg=None, debug_dir=None, geo_context
 
     pipeline = MultiStageVisionPipeline(provider, vlm_cfg)
     try:
-        return pipeline.run(img_bytes, photo_file.name, debug_dir=debug_dir, geo_context=geo_context)
+        return pipeline.run(
+            img_bytes,
+            photo_file.name,
+            debug_dir=debug_dir,
+            geo_context=geo_context,
+            step_callback=step_callback,
+        )
     except Exception as exc:
         print(f"[VLM] ⚠️  [{provider_name.upper()}] 流水线执行异常: {exc}，回退到本地算法")
         return None

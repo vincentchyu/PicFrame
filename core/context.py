@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
 
+from .domain.events import EventLevel, PipelineStage, ProgressEvent
 from .metadata import (
     fmt_ev,
     fmt_f_number,
@@ -28,9 +31,34 @@ class RendererContext:
     compression: str = "none"
     debug: bool = False
     debug_dir: object = None
+    step_callback: Callable[[ProgressEvent], None] | None = None
+
+    def report_step(self, step_tag: str, message: str, level: str = "info", **details: Any) -> None:
+        """统一向外部总线/TUI/CLI 汇报当前微步骤节点。"""
+        if self.step_callback:
+            lvl = EventLevel(level) if level in EventLevel._value2member_map_ else EventLevel.INFO
+            event = ProgressEvent(
+                stage=PipelineStage.RENDERING,
+                level=lvl,
+                message=message,
+                step_tag=step_tag,
+                photo_path=Path(self.photo_path) if self.photo_path else None,
+                details=details,
+            )
+            self.step_callback(event)
 
 
-def build_context(photo_path, source_dir, presentation, layout, compression="none", exif=None, debug=False, debug_dir=None):
+def build_context(
+    photo_path,
+    source_dir,
+    presentation,
+    layout,
+    compression="none",
+    exif=None,
+    debug=False,
+    debug_dir=None,
+    step_callback=None,
+):
     """Build only the shared metadata context; scheme modules supply assets."""
     from .rendering import dominant_bg
 
@@ -63,5 +91,7 @@ def build_context(photo_path, source_dir, presentation, layout, compression="non
         compression=compression,
         debug=debug,
         debug_dir=debug_dir,
+        step_callback=step_callback,
     )
+
 

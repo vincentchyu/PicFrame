@@ -1024,7 +1024,13 @@ def render_scheme4_editorial(context):
     print(f"│ 📸 输入照片: {Path(context.photo_path).name} ({photo_w}×{photo_h}, {orient_str})")
     print(f"│ 📐 选用布局: {layout_name} (风格: {layout_style})")
 
-    vlm_result = analyze_photo_with_vlm(context.photo_path, vlm_cfg, debug_dir=debug_dir, geo_context=geo_context)
+    vlm_result = analyze_photo_with_vlm(
+        context.photo_path,
+        vlm_cfg,
+        debug_dir=debug_dir,
+        geo_context=geo_context,
+        step_callback=context.step_callback,
+    )
 
     vlm_svg = None
     if vlm_result:

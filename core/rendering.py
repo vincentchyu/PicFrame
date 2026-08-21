@@ -1,4 +1,5 @@
 import colorsys
+from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFile
 
@@ -273,9 +274,22 @@ def apply_card_compression(canvas, output_policy, target_base=1080):
     return canvas
 
 
-def make_card(photo_path, result_dir, renderer, presentation, layout=None, output_policy=None, asset_dir=None, exif=None, debug=False):
+def make_card(
+    photo_path,
+    result_dir,
+    renderer,
+    presentation,
+    layout=None,
+    output_policy=None,
+    asset_dir=None,
+    exif=None,
+    debug=False,
+    step_callback=None,
+):
     from .output import OutputPolicy
 
+    photo_path = Path(photo_path)
+    result_dir = Path(result_dir)
     output_policy = output_policy or OutputPolicy()
     layout = str(layout or presentation.default_layout).strip().lower()
     if layout not in presentation.layouts:
@@ -297,6 +311,7 @@ def make_card(photo_path, result_dir, renderer, presentation, layout=None, outpu
         layout,
         compression=output_policy.compression,
         exif=exif,
+        step_callback=step_callback,
     )
 
     context = RenderContext(
