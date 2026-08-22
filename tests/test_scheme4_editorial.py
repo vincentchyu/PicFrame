@@ -479,6 +479,78 @@ class Scheme4EditorialTests(unittest.TestCase):
         _draw_architectural_line_art(canvas, 540, 1050, 500, 400, palette, "seascape", vlm_result=vlm_mock)
         self.assertEqual(canvas.size, (1080, 1440))
 
+    def test_parse_content_and_thinking(self):
+        from core.renderers.scheme4.vlm import _parse_content_and_thinking
+        c, t = _parse_content_and_thinking("{\"title\": \"ALPINE\"}", "This is a thinking process.")
+        self.assertEqual(c, "{\"title\": \"ALPINE\"}")
+        self.assertEqual(t, "This is a thinking process.")
+
+        raw_with_think = "<think>\nLet's analyze the alpine landscape...\n</think>\n{\"title\": \"ALPINE ECHO\"}"
+        c2, t2 = _parse_content_and_thinking(raw_with_think, "")
+        self.assertEqual(c2, "{\"title\": \"ALPINE ECHO\"}")
+        self.assertIn("Let's analyze the alpine landscape...", t2)
+
+    def test_pipeline_get_stage_options(self):
+        from core.renderers.scheme4.vlm import MLXProvider
+        from core.renderers.scheme4.pipeline import MultiStageVisionPipeline
+        vlm_cfg = {
+            "provider": "mlx",
+            "thinking": {
+                "enable": True,
+                "stages": {
+                    "stage1_spatial": {"level": "medium", "max_thinking_tokens": 1536, "temperature": 0.2, "reasoning_effort": "medium"},
+                    "stage2_curatorial": {"level": "high", "max_thinking_tokens": 3072, "temperature": 0.6, "reasoning_effort": "high"},
+                    "stage3_art_theory": {"level": "expert", "max_thinking_tokens": 4096, "temperature": 0.4, "reasoning_effort": "high"},
+                }
+            }
+        }
+        pipeline = MultiStageVisionPipeline(MLXProvider(), vlm_cfg)
+        s1 = pipeline._get_stage_options("stage1_spatial")
+        self.assertEqual(s1["level"], "medium")
+        self.assertEqual(s1["max_thinking_tokens"], 1536)
+        self.assertEqual(s1["temperature"], 0.2)
+        self.assertEqual(s1["reasoning_effort"], "medium")
+
+        s2 = pipeline._get_stage_options("stage2_curatorial")
+        self.assertEqual(s2["level"], "high")
+        self.assertEqual(s2["max_thinking_tokens"], 3072)
+        self.assertEqual(s2["temperature"], 0.6)
+
+        s3 = pipeline._get_stage_options("stage3_art_theory")
+        self.assertEqual(s3["level"], "expert")
+        self.assertEqual(s3["max_thinking_tokens"], 4096)
+        self.assertEqual(s3["temperature"], 0.4)
+
+        # 测试 isDefault: True 模式
+        vlm_cfg_default = {
+            "provider": "mlx",
+            "thinking": {
+                "enable": True,
+                "isDefault": True,
+            }
+        }
+        pipeline_default = MultiStageVisionPipeline(MLXProvider(), vlm_cfg_default)
+        s_def = pipeline_default._get_stage_options("stage1_spatial")
+        self.assertEqual(s_def["level"], "default")
+        self.assertEqual(s_def["is_default"], True)
+        self.assertIsNone(s_def["temperature"])
+        self.assertIsNone(s_def["max_thinking_tokens"])
+
+    def test_extract_curatorial_fallback_from_text(self):
+        from core.renderers.scheme4.pipeline import _extract_curatorial_fallback_from_text
+
+        # 模拟 9318 思考链末尾文本
+        think_text_9318 = 'I think "WOOD, WOOL, AND MIST" is the best title.\nSubtitle: "a quiet flock beneath the pines"'
+        res = _extract_curatorial_fallback_from_text("", think_text_9318)
+        self.assertEqual(res.get("title"), "WOOD, WOOL, AND MIST")
+        self.assertEqual(res.get("subtitle"), "a quiet flock beneath the pines")
+
+        # 模拟 Option 格式
+        think_text_opt = "Option A (Tactile & Material): SCULPTED SNOW | a solitary figure on frozen curves"
+        res2 = _extract_curatorial_fallback_from_text("", think_text_opt)
+        self.assertEqual(res2.get("title"), "SCULPTED SNOW")
+        self.assertEqual(res2.get("subtitle"), "a solitary figure on frozen curves")
+
 
 if __name__ == "__main__":
     unittest.main()

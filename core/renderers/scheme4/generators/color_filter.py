@@ -45,40 +45,58 @@ def _parse_rgba_str(val: str) -> tuple[int, int, int, int] | None:
 
 
 class SaliencySubjectZone:
-    """单个主体的紧致几何轮廓判定域"""
+    """单个主体的紧致几何轮廓判定域（支持物理长宽比各向同性补偿）"""
 
-    def __init__(self, cx: float, cy: float, rx: float, ry: float, subject_type: str = "general"):
+    def __init__(self, cx: float, cy: float, rx: float, ry: float, subject_type: str = "general", aspect_ratio: float = 1.0):
         self.cx = cx
         self.cy = cy
         self.rx = max(0.06, rx)
         self.ry = max(0.08, ry)
         self.subject_type = subject_type.lower()
+        self.aspect_ratio = max(0.1, min(10.0, float(aspect_ratio)))
 
     def normalized_distance(self, px: float, py: float) -> float:
-        """计算归一化点 (px, py) 到主体外轮廓的归一化距离 (<=1.0 表示在主体轮廓内部)"""
-        dx = (px - self.cx) / self.rx
+        """计算归一化点 (px, py) 到主体外轮廓的物理等比归一化距离 (<=1.0 表示在主体轮廓内部)"""
+        dx = ((px - self.cx) * self.aspect_ratio) / self.rx
         dy = (py - self.cy) / self.ry
         return math.hypot(dx, dy)
 
 
-def _point_to_segment_dist(px: float, py: float, x1: float, y1: float, x2: float, y2: float) -> tuple[float, float]:
-    """计算点 (px, py) 到线段 (x1, y1)-(x2, y2) 的距离以及在线段上的投影比例 t"""
-    dx = x2 - x1
+def _point_to_segment_dist(
+    px: float, py: float, x1: float, y1: float, x2: float, y2: float, aspect_ratio: float = 1.0
+) -> tuple[float, float]:
+    """计算点 (px, py) 到线段 (x1, y1)-(x2, y2) 的物理等比距离以及在线段上的投影比例 t"""
+    asp = max(0.1, min(10.0, float(aspect_ratio)))
+    dx = (x2 - x1) * asp
     dy = y2 - y1
+    pdx = (px - x1) * asp
+    pdy = py - y1
     seg_len_sq = dx * dx + dy * dy
     if seg_len_sq <= 1e-6:
-        return math.hypot(px - x1, py - y1), 0.0
-    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / seg_len_sq))
-    proj_x = x1 + t * dx
+        return math.hypot(pdx, pdy), 0.0
+    t = max(0.0, min(1.0, (pdx * dx + pdy * dy) / seg_len_sq))
+    proj_x = (x1 * asp) + t * dx
     proj_y = y1 + t * dy
-    return math.hypot(px - proj_x, py - proj_y), t
+    return math.hypot((px * asp) - proj_x, py - proj_y), t
 
 
-def _build_subject_zones(directives: dict | None) -> list[SaliencySubjectZone]:
-    """从大模型 directives 中提取真实紧致主体轮廓域，解决 BBox 虚大过宽问题"""
+def _build_subject_zones(directives: dict | None, aspect_ratio: float | None = None) -> list[SaliencySubjectZone]:
+    """从大模型 directives 中提取真实紧致主体轮廓域，解决 BBox 虚大过宽与长宽比各向异性畸变问题"""
+    asp = 1.0
+    if aspect_ratio is not None and aspect_ratio > 0:
+        asp = float(aspect_ratio)
+    elif directives and isinstance(directives, dict):
+        c_obj = directives.get("canvas") or {}
+        if isinstance(c_obj, dict) and c_obj.get("aspect_ratio"):
+            try:
+                asp = float(c_obj["aspect_ratio"])
+            except (ValueError, TypeError):
+                asp = 1.0
+
+    asp = max(0.1, min(10.0, asp))
     zones = []
     if not directives or not isinstance(directives, dict):
-        return [SaliencySubjectZone(0.50, 0.50, 0.20, 0.28, "general")]
+        return [SaliencySubjectZone(0.50, 0.50, 0.20 * asp, 0.28, "general", aspect_ratio=asp)]
 
     foci = directives.get("saliency_foci") or []
     if not isinstance(foci, list) or len(foci) == 0:
@@ -86,8 +104,8 @@ def _build_subject_zones(directives: dict | None) -> list[SaliencySubjectZone]:
         if isinstance(prot, dict) and "x" in prot and "y" in prot:
             px = float(prot["x"]) / (1000.0 if float(prot["x"]) > 1.0 else 1.0)
             py = float(prot["y"]) / (1000.0 if float(prot["y"]) > 1.0 else 1.0)
-            return [SaliencySubjectZone(px, py, 0.18, 0.26, "general")]
-        return [SaliencySubjectZone(0.50, 0.50, 0.20, 0.28, "general")]
+            return [SaliencySubjectZone(px, py, 0.18 * asp, 0.26, "general", aspect_ratio=asp)]
+        return [SaliencySubjectZone(0.50, 0.50, 0.20 * asp, 0.28, "general", aspect_ratio=asp)]
 
     for f in foci:
         if not isinstance(f, dict):
@@ -103,22 +121,22 @@ def _build_subject_zones(directives: dict | None) -> list[SaliencySubjectZone]:
             kx = [float(p[0]) / (1000.0 if float(p[0]) > 1.0 else 1.0) for p in kpts if isinstance(p, (list, tuple)) and len(p) >= 2]
             ky = [float(p[1]) / (1000.0 if float(p[1]) > 1.0 else 1.0) for p in kpts if isinstance(p, (list, tuple)) and len(p) >= 2]
             if kx and ky:
-                span_x = max(kx) - min(kx)
-                span_y = max(ky) - min(ky)
+                span_x_phys = (max(kx) - min(kx)) * asp
+                span_y_phys = max(ky) - min(ky)
                 cx = sum(kx) / len(kx)
                 cy = sum(ky) / len(ky)
                 
                 if any(k in stype for k in ("human", "person", "portrait", "figure")):
-                    rx = max(0.12, span_x * 0.60 + 0.08)
-                    ry = max(0.18, span_y * 0.60 + 0.10)
+                    rx = max(0.12, span_x_phys * 0.60 + 0.08)
+                    ry = max(0.18, span_y_phys * 0.60 + 0.10)
                 elif any(k in stype for k in ("tree", "botanical", "branch")):
-                    rx = max(0.14, span_x * 0.65 + 0.09)
-                    ry = max(0.18, span_y * 0.65 + 0.10)
+                    rx = max(0.14, span_x_phys * 0.65 + 0.09)
+                    ry = max(0.18, span_y_phys * 0.65 + 0.10)
                 else:
-                    rx = max(0.12, span_x * 0.60 + 0.08)
-                    ry = max(0.14, span_y * 0.60 + 0.08)
+                    rx = max(0.12, span_x_phys * 0.60 + 0.08)
+                    ry = max(0.14, span_y_phys * 0.60 + 0.08)
 
-                zones.append(SaliencySubjectZone(cx, cy, rx, ry, stype))
+                zones.append(SaliencySubjectZone(cx, cy, rx, ry, stype, aspect_ratio=asp))
                 continue
 
         # 2. 其次结合 center 与 bbox
@@ -132,19 +150,21 @@ def _build_subject_zones(directives: dict | None) -> list[SaliencySubjectZone]:
             b = [float(v) / (1000.0 if float(v) > 1.0 else 1.0) for v in raw_bbox]
             bx0, by0 = min(b[0], b[2]), min(b[1], b[3])
             bx1, by1 = max(b[0], b[2]), max(b[1], b[3])
-            bw = bx1 - bx0
-            bh = by1 - by0
+            bw_phys = (bx1 - bx0) * asp
+            bh_phys = by1 - by0
             
             if any(k in stype for k in ("human", "person", "portrait")):
-                rx = min(0.24, max(0.12, bw * 0.40))
-                ry = min(0.38, max(0.18, bh * 0.45))
+                rx = min(0.24 * max(1.0, asp), max(0.12, bw_phys * 0.40))
+                ry = min(0.38, max(0.18, bh_phys * 0.45))
             else:
-                rx = min(0.30, max(0.12, bw * 0.45))
-                ry = min(0.35, max(0.14, bh * 0.45))
+                rx = min(0.30 * max(1.0, asp), max(0.12, bw_phys * 0.45))
+                ry = min(0.35, max(0.14, bh_phys * 0.45))
         else:
-            rx, ry = 0.18, 0.26
+            rx, ry = 0.18 * asp, 0.26
 
-        zones.append(SaliencySubjectZone(cx, cy, rx, ry, stype))
+        zones.append(SaliencySubjectZone(cx, cy, rx, ry, stype, aspect_ratio=asp))
+
+    return zones if zones else [SaliencySubjectZone(0.50, 0.50, 0.20 * asp, 0.28, "general", aspect_ratio=asp)]
 
     return zones if zones else [SaliencySubjectZone(0.50, 0.50, 0.20, 0.28, "general")]
 
@@ -245,6 +265,7 @@ def apply_step2_tension_bridge(
         return svg_code, {"status": "skipped", "reason": "less_than_2_zones", "bridge_polygons": 0}
 
     vx0, vy0, vw, vh = _get_svg_viewbox(svg_code)
+    asp = vw / vh if vh > 0 else 1.0
     bridge_count = 0
 
     # 若提供了 raw_svg_code，预先建立 path d -> 原生 RGB 映射
@@ -278,7 +299,7 @@ def apply_step2_tension_bridge(
         for i in range(len(zones)):
             for j in range(i + 1, len(zones)):
                 z1, z2 = zones[i], zones[j]
-                dist_to_seg, t_proj = _point_to_segment_dist(norm_x, norm_y, z1.cx, z1.cy, z2.cx, z2.cy)
+                dist_to_seg, t_proj = _point_to_segment_dist(norm_x, norm_y, z1.cx, z1.cy, z2.cx, z2.cy, aspect_ratio=asp)
                 if dist_to_seg <= bridge_width and 0.05 <= t_proj <= 0.95:
                     w = 0.5 * (1.0 + math.cos(math.pi * (dist_to_seg / bridge_width)))
                     bridge_boost = max(bridge_boost, w)
@@ -422,12 +443,14 @@ def apply_selective_color_pipeline(
     bridge_cfg = cfg.get("tension_bridge", {})
     bridge_enable = bool(bridge_cfg.get("enable", True))
 
-    # 2. 构建紧致主体轮廓域
-    zones = _build_subject_zones(directives)
+    # 2. 提取 SVG 真实长宽比与构建紧致主体轮廓域
+    _, _, vw, vh = _get_svg_viewbox(raw_svg_code)
+    svg_aspect = vw / vh if vh > 0 else 1.0
+    zones = _build_subject_zones(directives, aspect_ratio=svg_aspect)
     current_svg = raw_svg_code
     pipeline_stats = {"status": "applied", "steps_executed": []}
 
-    print(f"│ 🎨 [抽色美学工序] 启动解耦式画廊矢量渲染管道 (共检测到 {len(zones)} 处主体判定域)")
+    print(f"│ 🎨 [抽色美学工序] 启动解耦式画廊矢量渲染管道 (检测到 {len(zones)} 处主体域 | AspectRatio: {svg_aspect:.3f})")
 
     # ── 工序 4.1: 主体留色与背景去饱和 (Step 1) ──
     # 如果开启引力桥，在判定背景时将引力桥区域保护并保留 bridge_sat 饱和度

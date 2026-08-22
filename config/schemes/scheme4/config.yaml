@@ -94,22 +94,54 @@ vlm:
   # 流水线模式：可选 "progressive" (三阶段渐进式视觉解构与通用图元转译) 或 "fast" (单阶段极速优化)
   pipeline_mode: "progressive"
 
-  # 1. MLX / OpenAI 兼容本地端点 (推荐 Apple Silicon: Qwen3-VL-4B-Instruct-MLX-6bit)
+  # 1. MLX / OpenAI 兼容本地端点 (推荐 Apple Silicon: Youssofal--Qwen3.8-27B-MTPLX-Optimized-Speed-FP16)
   mlx:
     base_url: "http://127.0.0.1:8000/v1"
-    api_key: "6624"
-    model: "gemma-4-26b-a4b-it-6bit"
-    timeout: 30
-
+    api_key: "" # 留空则自动从 .env (MLX_API_KEY / OPENAI_API_KEY) 或环境变量读取
+    # model: "mtplx-qwen36-35b-a3b-optimized-speed-fp16"
+    model: "gemma-4-26B-A4B-it-qat-OptiQ-4bit"
+    timeout: 1000
   # 2. Ollama 本地端点配置
   ollama:
     model: "qwen3-vl:latest"
     timeout: 45
 
-  # 3. Google Gemini 配置
+  # 3. Google Gemini 配置 (官方多模态大模型)
   gemini:
-    model: "gemini-1.5-flash"
-    api_key: "" # 或从环境变量 GEMINI_API_KEY 读取
+    model: "gemini-3.6-flash" # 推荐: "gemini-3.7-flash", 可选 "gemini-2.5-flash", "gemini-2.0-flash"
+    api_key: "" # 留空则自动从项目根目录 .env 文件或系统环境变量 GEMINI_API_KEY 读取
+    timeout: 300 # 超时时间 5 分钟 (300 秒)
+
+  # 思考模型与分阶段思考级别控制 (Adaptive Reasoning Levels)
+  thinking:
+    enable: true
+    isDefault: true              # 若为 true，忽略全部自定义 AI 调参，直接使用服务端默认原生超参（仅保留 prompt 与图片）
+    stages:
+      stage1_spatial:
+        level: "medium"            # 空间几何解构：中等思考，侧重物理事实验证与坐标定位
+        max_thinking_tokens: 1536
+        temperature: 0.2
+        reasoning_effort: "medium"
+      stage2_curatorial:
+        level: "low"               # 文学策展与诗性标题：轻量聚焦思考，3步脚手架定稿
+        max_thinking_tokens: 768
+        temperature: 0.2
+        reasoning_effort: "low"
+      stage3_art_theory:
+        level: "expert"            # 艺术理论与造型抽象：专家级深思，侧重多维美学映射与形式隐喻
+        max_thinking_tokens: 4096
+        temperature: 0.4
+        reasoning_effort: "high"
+      stage4_svg_synthesis:
+        level: "medium"            # 矢量代码合成：中等思考，侧重 SVG 语法闭合
+        max_thinking_tokens: 2048
+        temperature: 0.2
+        reasoning_effort: "medium"
+      fast_unified:
+        level: "medium"            # 极速统合模式：平衡思考
+        max_thinking_tokens: 2048
+        temperature: 0.3
+        reasoning_effort: "medium"
 
   # 分析用缩略图最大边长（像素），原图 6000px 压缩至 1024px 节省 35x 算力
   max_analysis_size: 1024

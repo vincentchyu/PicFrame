@@ -369,13 +369,13 @@ def _render_ascii_diptych(context, cfg_obj, cfg):
         divider_color = "#12331C"
         swatch_border = "#00FF66"
     else:
-        box_bg_rgb = (max(0, bg_rgb[0] - 6), max(0, bg_rgb[1] - 6), max(0, bg_rgb[2] - 8))
-        hud_border = "#8EA896"
-        hud_header_tag = "#0A3D1B"
-        label_color = "#28683B"
-        val_color = "#082B13"
-        divider_color = "#BDC9BF"
-        swatch_border = "#28683B"
+        box_bg_rgb = (max(0, bg_rgb[0] - 5), max(0, bg_rgb[1] - 5), max(0, bg_rgb[2] - 7))
+        hud_border = "#9DB3A5"
+        hud_header_tag = "#1D4B2D"
+        label_color = "#52755E"
+        val_color = "#243B2D"
+        divider_color = "#CAD6CE"
+        swatch_border = "#52755E"
 
     # ── 构建 ASCII 引擎配置 ──
     cfg_invert = ascii_cfg.get("invert")
@@ -397,28 +397,35 @@ def _render_ascii_diptych(context, cfg_obj, cfg):
     ascii_art, palette = generate_ascii_art(photo, ascii_config)
     ascii_art_w, ascii_art_h = ascii_art.size
 
-    # ── 等宽机械字体字阶 ──
-    primary_font_size = max(11, int(canvas_size * font_scale * 0.9))
-    header_font_size = max(10, int(primary_font_size * 0.85))
-    line_gap = int(primary_font_size * 1.4)
-    swatch_size = max(12, int(primary_font_size * 1.05))
-    swatch_gap = int(swatch_size * 0.5)
+    # ── 等宽机械字体字阶（对齐移动端视网膜高 PPI 舒适阅读字阶） ──
+    primary_font_size = max(14, int(canvas_size * font_scale * 0.95))
+    header_font_size = max(12, int(primary_font_size * 0.82))
+    line_gap = int(primary_font_size * 1.40)
+    swatch_size = max(14, int(primary_font_size * 1.05))
+    swatch_gap = int(swatch_size * 0.45)
 
-    pad_x = max(16, int(box_w * 0.03))
-    pad_y = max(12, int(box_h * 0.04))
+    pad_x = max(16, int(box_w * 0.025))
+    pad_y = max(12, int(box_h * 0.040))
+    col_gap = max(20, int(box_w * 0.035))
 
     header_h = line_gap
     divider_h = max(6, int(line_gap * 0.5))
-    meta_rows = 4  # GEAR, EXIF, GEO, AUTH & TONE
-    meta_section_h = meta_rows * line_gap
 
-    # ── 抽象卡比例严格等于原图比例 ──
+    # ── 左右分栏几何推导 (Left-Right Split HUD) ──
+    # 左栏：大画幅 ASCII 伴侣艺术 (Hero Art Companion)
+    # 右栏：结构化遥测数据网格 (Structured Telemetry HUD)
     aspect_ratio = photo_w / photo_h if photo_h > 0 else 1.0
-    avail_inner_h = max(30, box_h - (pad_y * 2 + header_h * 2 + divider_h + meta_section_h + int(pad_y * 0.8)))
-    avail_inner_w = box_w - pad_x * 2
+    avail_left_h = max(40, box_h - pad_y * 2 - header_h - int(pad_y * 0.3))
+    max_left_w = int(box_w * 0.52) - pad_x
 
-    target_ascii_h = min(avail_inner_h, int(avail_inner_w / aspect_ratio))
-    target_ascii_w = int(target_ascii_h * aspect_ratio)
+    # 优先让 ASCII 占满高度，并受限于最大左栏宽度
+    target_ascii_w = min(max_left_w, int(avail_left_h * aspect_ratio))
+    target_ascii_h = int(target_ascii_w / aspect_ratio)
+
+    left_col_w = target_ascii_w
+    divider_x = box_x + pad_x + left_col_w + col_gap // 2
+    right_col_x = box_x + pad_x + left_col_w + col_gap
+    right_col_w = box_x + box_w - pad_x - right_col_x
 
     ascii_resized = ascii_art.resize((target_ascii_w, target_ascii_h), Image.Resampling.LANCZOS)
 
@@ -437,81 +444,135 @@ def _render_ascii_diptych(context, cfg_obj, cfg):
     draw = ImageDraw.Draw(canvas)
     draw.rectangle([box_x, box_y, box_x + box_w, box_y + box_h], fill=box_bg_rgb, outline=hud_border, width=1)
 
+    # 中间垂直分割线
+    draw.line([divider_x, box_y + pad_y, divider_x, box_y + box_h - pad_y], fill=divider_color, width=1)
+
     font_mono_main = get_mono_font(primary_font_size, bold=True)
     font_mono_sub = get_mono_font(primary_font_size, bold=False)
     font_mono_header = get_mono_font(header_font_size, bold=True)
 
     cur_y = box_y + pad_y
 
-    # Section 1 Header: [01 / ASCII MATRIX DECODE] ────── [STATUS: OK]
+    # ── [左栏] Section 1: [01 / ASCII MATRIX DECODE] ──
     tag_left = "[01 / ASCII MATRIX DECODE]"
-    tag_right = "[STATUS: 24-BIT · OK]"
     draw.text((box_x + pad_x, cur_y), tag_left, fill=hud_header_tag, font=font_mono_header)
 
-    bbox_tr = draw.textbbox((0, 0), tag_right, font=font_mono_header)
-    tr_w = bbox_tr[2] - bbox_tr[0]
-    draw.text((box_x + box_w - pad_x - tr_w, cur_y), tag_right, fill=label_color, font=font_mono_header)
+    ascii_paste_y = cur_y + header_h + int(pad_y * 0.3) + (avail_left_h - target_ascii_h) // 2
+    canvas.paste(ascii_resized, (box_x + pad_x, ascii_paste_y))
 
-    cur_y += header_h + int(pad_y * 0.3)
+    # ── [右栏] Section 2: [02 / TELEMETRY DATA] & 状态标签 ──
+    draw.text((right_col_x, cur_y), "[02 / TELEMETRY DATA]", fill=hud_header_tag, font=font_mono_header)
+    tag_status = "[STATUS: OK]"
+    bbox_stat = draw.textbbox((0, 0), tag_status, font=font_mono_header)
+    stat_w = bbox_stat[2] - bbox_stat[0]
+    draw.text((box_x + box_w - pad_x - stat_w, cur_y), tag_status, fill=label_color, font=font_mono_header)
 
-    # 粘贴 ASCII 结构画（居中于舱体视口内，比例严格等于原图）
-    ascii_paste_x = box_x + (box_w - target_ascii_w) // 2
-    canvas.paste(ascii_resized, (ascii_paste_x, cur_y))
-    cur_y += target_ascii_h + int(pad_y * 0.6)
+    # 提取并排版右栏参数
+    cam_val = getattr(context, "camera_model", "") or (fmt_model(context.exif) if isinstance(getattr(context, "exif", None), dict) else "")
+    lens_val = getattr(context, "lens_model", "")
+    exif = getattr(context, "exif", {}) if isinstance(getattr(context, "exif", None), dict) else {}
+    focal = fmt_focal(exif.get("FocalLength"))
+    fnum = exif.get("FNumber") or exif.get("Aperture")
+    fnum_str = f"f/{fnum}" if fnum else ""
+    exp_time = str(exif.get("ExposureTime") or exif.get("ShutterSpeed") or "")
+    if exp_time and not exp_time.endswith("s") and "/" in exp_time:
+        exp_time = f"{exp_time}s"
+    iso = exif.get("ISO")
+    iso_str = f"ISO {iso}" if iso else ""
+    ev_val = fmt_ev(exif.get("ExposureCompensation"))
 
-    # Section 分割线
-    draw.line([box_x + pad_x, cur_y, box_x + box_w - pad_x, cur_y], fill=divider_color, width=1)
-    cur_y += divider_h
+    focal_opt = " · ".join([t for t in [focal, fnum_str] if t])
+    shutter_opt = " · ".join([t for t in [exp_time, iso_str, ev_val] if t])
+    gps_val = fmt_gps(exif) or ""
+    artist_val = fmt_artist(exif, cfg_obj.artist())
 
-    # Section 2 Header: [02 / TELEMETRY DATA]
-    draw.text((box_x + pad_x, cur_y), "[02 / TELEMETRY DATA]", fill=hud_header_tag, font=font_mono_header)
-    cur_y += header_h + int(pad_y * 0.3)
+    right_items = []
+    if cam_val:
+        right_items.append(("MODEL", cam_val, True))
+    if lens_val:
+        right_items.append(("LENS", lens_val, True))
+    if focal_opt:
+        right_items.append(("FOCAL", focal_opt, True))
+    if shutter_opt:
+        right_items.append(("SHUTTER", shutter_opt, True))
+    if gps_val:
+        right_items.append(("GEO", gps_val, False))
+    if artist_val:
+        right_items.append(("AUTH", artist_val, False))
 
-    # Key-Value 遥测数据网格
-    gear_val = _format_gear_line(context, separator=" · ")
-    exif_val = _format_exposure_line(context.exif, separator=" · ")
-    gps_val = fmt_gps(context.exif) or "N/A"
-    artist_val = fmt_artist(context.exif, cfg_obj.artist())
+    # 右栏自适应字号防溢出微调
+    right_primary_fs = primary_font_size
+    right_min_fs = max(12, int(primary_font_size * 0.82))
+    while right_primary_fs > right_min_fs:
+        f_t = get_mono_font(right_primary_fs, bold=True)
+        f_h = get_mono_font(int(right_primary_fs * 0.82), bold=True)
+        overflow = False
+        for label, val, is_bold in right_items:
+            lbl_text = f"{label:<7} :: "
+            b_l = draw.textbbox((0, 0), lbl_text, font=f_h)
+            b_v = draw.textbbox((0, 0), val, font=f_t)
+            if ((b_l[2] - b_l[0]) + (b_v[2] - b_v[0])) > right_col_w:
+                overflow = True
+                break
+        if not overflow:
+            break
+        right_primary_fs -= 1
 
-    def _draw_kv(d, label, value, y_pos, val_f=font_mono_main):
+    # 亮色模式下使用常规字重避免粗黑喧宾夺主，暗色模式下使用加粗以凸显荧光发光质感
+    val_bold = True if bg_is_dark else False
+    f_right_main = get_mono_font(right_primary_fs, bold=val_bold)
+    f_right_sub = get_mono_font(right_primary_fs, bold=False)
+    f_right_hdr = get_mono_font(int(right_primary_fs * 0.82), bold=True)
+    right_line_gap = int(right_primary_fs * 1.40)
+
+    # 对溢出单行进行优雅截断
+    sanitized_right = []
+    for label, val, is_bold in right_items:
         lbl_text = f"{label:<7} :: "
-        d.text((box_x + pad_x, y_pos), lbl_text, fill=label_color, font=font_mono_header)
-        bbox_lbl = d.textbbox((0, 0), lbl_text, font=font_mono_header)
+        b_l = draw.textbbox((0, 0), lbl_text, font=f_right_hdr)
+        lbl_w = b_l[2] - b_l[0]
+        val_limit = right_col_w - lbl_w
+        cur_val = val
+        while cur_val:
+            b_v = draw.textbbox((0, 0), cur_val, font=f_right_main)
+            if (b_v[2] - b_v[0]) <= val_limit:
+                break
+            cur_val = cur_val[:-4] + "..." if len(cur_val) > 4 else cur_val[:-1]
+        sanitized_right.append((label, cur_val, is_bold))
+
+    right_y = cur_y + header_h + int(pad_y * 0.3)
+    def _draw_right_kv(d, label, value, y_pos, is_bold=True):
+        lbl_text = f"{label:<7} :: "
+        d.text((right_col_x, y_pos), lbl_text, fill=label_color, font=f_right_hdr)
+        bbox_lbl = d.textbbox((0, 0), lbl_text, font=f_right_hdr)
         lbl_w = bbox_lbl[2] - bbox_lbl[0]
-        d.text((box_x + pad_x + lbl_w, y_pos), value, fill=val_color, font=val_f)
+        v_f = f_right_main if is_bold else f_right_sub
+        d.text((right_col_x + lbl_w, y_pos), value, fill=val_color, font=v_f)
 
-    if gear_val:
-        _draw_kv(draw, "GEAR", gear_val, cur_y)
-        cur_y += line_gap
+    for label, val, is_bold in sanitized_right:
+        _draw_right_kv(draw, label, val, right_y, is_bold=is_bold)
+        right_y += right_line_gap
 
-    if exif_val:
-        _draw_kv(draw, "EXIF", exif_val, cur_y)
-        cur_y += line_gap
-
-    if gps_val and gps_val != "N/A":
-        _draw_kv(draw, "GEO", gps_val, cur_y, val_f=font_mono_sub)
-        cur_y += line_gap
-
-    # 第四行：AUTH 署名 + TONE 色卡
-    lbl_auth = "AUTH    :: "
-    draw.text((box_x + pad_x, cur_y), lbl_auth, fill=label_color, font=font_mono_header)
-    bbox_la = draw.textbbox((0, 0), lbl_auth, font=font_mono_header)
-    la_w = bbox_la[2] - bbox_la[0]
-    draw.text((box_x + pad_x + la_w, cur_y), artist_val, fill=val_color, font=font_mono_sub)
-
-    # 右侧嵌入色卡
+    # ── 色卡行：沉底固定在右下角 (Bottom-Right Anchor)，达成四角张力均衡 ──
     if palette:
+        lbl_tone = "TONE :: "
+        bbox_lt = draw.textbbox((0, 0), lbl_tone, font=f_right_hdr)
+        lt_w = bbox_lt[2] - bbox_lt[0]
+        lt_h = bbox_lt[3] - bbox_lt[1]
+
         total_swatches_w = len(palette) * swatch_size + (len(palette) - 1) * swatch_gap
         swatch_start_x = box_x + box_w - pad_x - total_swatches_w
-        lbl_tone = "TONE :: "
-        bbox_lt = draw.textbbox((0, 0), lbl_tone, font=font_mono_header)
-        lt_w = bbox_lt[2] - bbox_lt[0]
-        draw.text((swatch_start_x - lt_w - 6, cur_y), lbl_tone, fill=label_color, font=font_mono_header)
+        tone_lbl_x = swatch_start_x - lt_w - max(4, int(swatch_gap * 0.8))
+
+        swatch_y = box_y + box_h - pad_y - swatch_size
+        tone_lbl_y = swatch_y + (swatch_size - lt_h) // 2
+
+        draw.text((tone_lbl_x, tone_lbl_y), lbl_tone, fill=label_color, font=f_right_hdr)
 
         for i, color in enumerate(palette):
             sx = swatch_start_x + i * (swatch_size + swatch_gap)
-            draw.rectangle([sx, cur_y + 1, sx + swatch_size, cur_y + 1 + swatch_size], fill=color)
-            draw.rectangle([sx, cur_y + 1, sx + swatch_size, cur_y + 1 + swatch_size], outline=swatch_border, width=1)
+            draw.rectangle([sx, swatch_y, sx + swatch_size, swatch_y + swatch_size], fill=color)
+            draw.rectangle([sx, swatch_y, sx + swatch_size, swatch_y + swatch_size], outline=swatch_border, width=1)
 
     return canvas
 
@@ -571,13 +632,13 @@ def _render_ascii_diptych_portrait_square(
         divider_color = "#12331C"
         swatch_border = "#00FF66"
     else:
-        box_bg_rgb = (max(0, bg_rgb[0] - 6), max(0, bg_rgb[1] - 6), max(0, bg_rgb[2] - 8))
-        hud_border = "#8EA896"
-        hud_header_tag = "#0A3D1B"
-        label_color = "#28683B"
-        val_color = "#082B13"
-        divider_color = "#BDC9BF"
-        swatch_border = "#28683B"
+        box_bg_rgb = (max(0, bg_rgb[0] - 5), max(0, bg_rgb[1] - 5), max(0, bg_rgb[2] - 7))
+        hud_border = "#9DB3A5"
+        hud_header_tag = "#1D4B2D"
+        label_color = "#52755E"
+        val_color = "#243B2D"
+        divider_color = "#CAD6CE"
+        swatch_border = "#52755E"
 
     # 创建 1:1 正方形画布
     canvas = Image.new("RGB", (canvas_size, canvas_size), bg_rgb)
@@ -633,11 +694,14 @@ def _render_ascii_diptych_portrait_square(
     if artist_val:
         kv_items.append(("AUTH", artist_val, False))
 
-    # ── 智能自适应计算字阶（Auto-Fit） ──
-    primary_font_size = max(10, int(box_w * 0.038))
-    while primary_font_size > 8:
-        f_test = get_mono_font(primary_font_size, bold=True)
-        f_hdr = get_mono_font(int(primary_font_size * 0.85), bold=True)
+    # ── 智能自适应计算字阶（对齐移动端视网膜高 PPI 舒适阅读字阶） ──
+    primary_font_size = max(14, int(box_w * 0.055))
+    min_font_size = max(12, int(box_w * 0.046))
+
+    val_bold = True if bg_is_dark else False
+    while primary_font_size > min_font_size:
+        f_test = get_mono_font(primary_font_size, bold=val_bold)
+        f_hdr = get_mono_font(int(primary_font_size * 0.82), bold=True)
         overflow = False
         for label, val, is_bold in kv_items:
             lbl_text = f"{label:<7} :: "
@@ -651,12 +715,30 @@ def _render_ascii_diptych_portrait_square(
             break
         primary_font_size -= 1
 
-    header_font_size = max(8, int(primary_font_size * 0.85))
-    line_gap = int(primary_font_size * 1.45)
-    swatch_size = max(10, int(primary_font_size * 1.05))
-    swatch_gap = int(swatch_size * 0.5)
+    # 保护单行文本：若降至安全底线仍有极长行溢出，针对单行进行优雅截断
+    f_test = get_mono_font(primary_font_size, bold=val_bold)
+    f_hdr = get_mono_font(int(primary_font_size * 0.82), bold=True)
+    sanitized_items = []
+    for label, val, is_bold in kv_items:
+        lbl_text = f"{label:<7} :: "
+        bbox_l = draw.textbbox((0, 0), lbl_text, font=f_hdr)
+        lbl_w = bbox_l[2] - bbox_l[0]
+        val_w_limit = max_text_w - lbl_w
+        cur_val = val
+        while cur_val:
+            bbox_v = draw.textbbox((0, 0), cur_val, font=f_test)
+            if (bbox_v[2] - bbox_v[0]) <= val_w_limit:
+                break
+            cur_val = cur_val[:-4] + "..." if len(cur_val) > 4 else cur_val[:-1]
+        sanitized_items.append((label, cur_val, is_bold))
+    kv_items = sanitized_items
 
-    font_mono_main = get_mono_font(primary_font_size, bold=True)
+    header_font_size = max(10, int(primary_font_size * 0.82))
+    line_gap = int(primary_font_size * 1.42)
+    swatch_size = max(12, int(primary_font_size * 1.05))
+    swatch_gap = int(swatch_size * 0.45)
+
+    font_mono_main = get_mono_font(primary_font_size, bold=val_bold)
     font_mono_sub = get_mono_font(primary_font_size, bold=False)
     font_mono_header = get_mono_font(header_font_size, bold=True)
 

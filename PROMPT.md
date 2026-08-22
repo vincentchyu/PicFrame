@@ -64,7 +64,7 @@
 - 每个批次选择一个展示方案，再选择该方案支持的 layout；同一批次不混用多个方案。
 - `scheme2` 为右侧 Logo 水印带布局 (`watermark_right_logo`)；配置位于 `config/schemes/scheme2/config.yaml`，字体和品牌 Logo 在 `assets/scheme2/`。其保留照片原始比例并在底部拼接包含曝光参数、镜头型号、品牌 Logo、日期与版权的水印栏。
 - `scheme3` 为黑客终端与 ASCII 结构解构方案；配置位于 `config/schemes/scheme3/config.yaml`。其在 1:1 正方形画幅中保留原图原始比例作为绝对视觉主体，支持 `gallery_ascii_terminal`（智能自适应黑客终端 HUD 仪表舱装裱：明亮照片使用主色亮卡纸+深墨绿黑客字，暗色照片使用暗黑底+荧光黑客绿字，全量英文等宽机械字体）及 `gallery_ascii_diptych`（原片提取主色背景 + 真实色彩 ASCII 结构画双联装裱）。ASCII 引擎（`ascii_engine.py`）使用 Block 字符集（`█▓▒░`）、Sobel 边缘增强与自适应明暗主题推导。
-- `scheme4` 为抽象艺术编辑双联方案；配置位于 `config/schemes/scheme4/config.yaml`。其参考 `photo-abstract-editorial` 理念，完全跳出传统参数相框，将原片无缝衔接象牙色面板（`#F3F0E8`），自动提取 4 色调色板与空间几何记忆母题，排版信达雅的诗意英文大写衬线标题。支持 `editorial_diptych`（200 晶格几何肌理）、`editorial_guidance`（精工细线草图与焦点解构）、`editorial_asymmetric` 与 `editorial_minimal`。
+- `scheme4` 为抽象艺术编辑双联方案；配置位于 `config/schemes/scheme4/config.yaml`。其参考 `photo-abstract-editorial` 理念，完全跳出传统参数相框，将原片无缝衔接象牙色面板（`#F3F0E8`），自动提取 4 色调色板与空间几何记忆母题，排版信达雅的诗意英文大写衬线标题。支持 `editorial_diptych`（200 晶格几何肌理）、`editorial_guidance`（精工细线草图与焦点解构）、`editorial_asymmetric` 与 `editorial_minimal`。Stage 1~4 数据结构统一内嵌 `canvas` 物理画幅载体元数据（`aspect_ratio`, `width`, `height`），且几何滤镜全面执行长宽比各向同性补偿，保证空间坐标可无损精准复原且正圆无椭圆畸变。
 - 方案2、方案3和方案4保留原图比例并在各自独立模块内完成排版渲染，不重复叠加方案1的顶部/底部胶囊。
 - **TUI 方案预览硬性约束**：设计或接入任何新展示方案（Scheme）或新布局（Layout）时，**必须同步在 `core/tui.py` 中补充完整的方案级（`SCHEME_PREVIEWS`）和布局级（`LAYOUT_PREVIEWS`）ASCII 布局线框预览图与描述文本**，以及 `choose_layout` 中的单行说明。严禁在 TUI 界面中出现任何方案或布局预览区空白缺失的情况。
 - **竖图必须采用左右并排结构硬性约束**：在所有现有与未来新增的展示方案（Scheme 3、Scheme 4 及任何新方案/新布局）中，凡涉及摄影作品与附属画幅/面板（如 ASCII 结构画、抽象视觉面板、编辑肌理、元数据侧栏等）组合装裱时，**对于竖画幅照片（`photo_h > photo_w`），一律无条件自动采用【左图右文/左右并排结构】（左侧：忠实摄影原作；右侧：附属 ASCII/艺术面板与参数信息）**，严禁使用上下堆叠导致画面过度细长失衡。横画幅照片（`photo_w >= photo_h`）继续保持【上图下文/上下堆叠结构】。

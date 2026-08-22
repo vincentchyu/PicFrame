@@ -46,10 +46,10 @@ flowchart TD
 - 1024px 缩略图下采样 (RGB / 灰度)"]
     
     Preprocess --> VLM_Check{"🌐 VLM 服务是否可用?
-(MLX / Localhost 8000 / OpenAI)"}
+(MLX / Gemini / Ollama / OpenAI)"}
     
     %% VLM 分支
-    VLM_Check -->|"正常可用"| VLM_P["🚀 VLM 四阶段递进式视觉感知与抽象流水线"]
+    VLM_Check -->|"正常可用 (MLX / Gemini / Ollama)"| VLM_P["🚀 VLM 四阶段递进式视觉感知与抽象流水线"]
     subgraph VLM_Pipeline ["VLM 感知与抽象流水线 (core/renderers/scheme4/pipeline.py)"]
         VLM_P --> Stage1["🔍 Stage 1: 空间地貌与主体解构
 - 场景分类 (scene_type)
@@ -162,10 +162,20 @@ sequenceDiagram
 
 ## 4. 共享上下文与造型特征数据模型 (Shared Context & Art Theory Schema)
 
-`editorial_diptych` 与 `editorial_guidance` 共享以下完整数据上下文，并在 Debug 模式下完整落盘 `04_stage3_focus_features.json`：
+`editorial_diptych` 与 `editorial_guidance` 共享以下完整数据上下文，并在 Debug 模式下完整落盘 `01_stage1_parsed.json`, `03_stage3_focus_features.json` 与 `04_stage4_parsed.json`。
+
+### 4.1 物理载体元数据与空间解构规范 (Canvas & Spatial Schema)
+为确保数据**自包含（Self-contained）**并在脱离原始图像后仍能精确复原物理坐标与真实地貌角度，顶层统一包含 `canvas` 物理画幅载体对象：
 
 ```json
 {
+  "canvas": {
+    "aspect_ratio": 1.50,
+    "orientation": "landscape",
+    "width": 6048,
+    "height": 4024,
+    "coordinate_space": "normalized_uv_top_left"
+  },
   "title": "REACHING ACROSS THE LAKE",
   "subtitle": "a playful connection under alpine light",
   "scene_type": "portrait",
@@ -236,6 +246,14 @@ sequenceDiagram
   }
 }
 ```
+
+### 4.2 长宽比各向同性补偿机制 (Aspect Ratio Compensation)
+在非 1:1 画幅（如 3:2 横图或 9:16 竖图）下，直接使用归一化坐标计算欧氏距离会导致各向异性畸变（圆形焦点变椭圆、线段投影拉伸）。系统采用严格的物理长宽比补偿公式：
+
+$$\text{Normalized Distance} = \sqrt{\left(\frac{(p_x - c_x) \times \text{aspect\_ratio}}{r_x}\right)^2 + \left(\frac{p_y - c_y}{r_y}\right)^2}$$
+
+* **主体抽色与羽化**：使高光羽化区域在真实画面中保持纯正正圆；
+* **多主体视线引力桥**：线段到点的物理欧几里得距离经过长宽比投影修正，实现物理等比张力连结。
 
 ---
 

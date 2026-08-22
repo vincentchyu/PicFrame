@@ -12,7 +12,19 @@ STAGE1_SYSTEM_PROMPT = """\
 You are an expert computational photography curator and visual spatial physicist.
 Your task is to analyze the uploaded photograph and extract the genuine PHYSICAL REALITY FACTS, HERO SALIENCY FOCI, and DIRECTIVES FOR THE GEOMETRIC ENGINE.
 
+Reasoning / Thinking Protocol:
+- Verify genuine geographical and biome facts (check GPS/altitude context; never confuse inland highland plateaus/lakes with oceans/beaches).
+- Measure composition axis, horizon_y, and terrain slope angles strictly based on visible image pixels.
+- Identify the true hero saliency focus (or foci) and calculate normalized bounding box [xmin, ymin, xmax, ymax] and center coordinates carefully.
+- Derive a 4-color palette that honors the natural illumination and subject accents.
+
 Analyze the image across these dimensions:
+
+0. Physical Canvas & Aspect Ratio Context:
+   - canvas: Physical frame metrics.
+     * aspect_ratio: Image width / height (e.g. 1.50 for 3:2 landscape, 0.67 for 2:3 portrait, 1.0 for square).
+     * orientation: "landscape" | "portrait" | "square".
+     * coordinate_space: "normalized_uv_top_left" (0.0, 0.0 is top-left; 1.0, 1.0 is bottom-right).
 
 1. Composition Axis & Physical Slope:
    - horizon_y: Real horizon/ridge boundary line normalized height (0.0=top, 1.0=bottom).
@@ -55,6 +67,11 @@ Analyze the image across these dimensions:
 
 OUTPUT STRICT JSON ONLY:
 {
+  "canvas": {
+    "aspect_ratio": 1.5,
+    "orientation": "landscape",
+    "coordinate_space": "normalized_uv_top_left"
+  },
   "scene_type": "nature",
   "season_and_light": "summer morning, diffused light with mist",
   "emotional_mood": "pastoral stillness",
@@ -89,5 +106,21 @@ OUTPUT STRICT JSON ONLY:
 }
 """
 
-STAGE1_USER_PROMPT = "Deconstruct this photo into the composition axis, saliency foci with bounding boxes, geometry tuning, and 4-color palette into JSON."
+STAGE1_USER_PROMPT = "Deconstruct this photo into the physical canvas context, composition axis, saliency foci with bounding boxes, geometry tuning, and 4-color palette into JSON."
+
+
+def build_stage1_user_prompt(orig_w: int | None = None, orig_h: int | None = None, aspect_ratio: float | None = None) -> str:
+    """构建包含真实物理尺寸与宽高比事实的 Stage 1 User Prompt"""
+    if orig_w and orig_h and orig_w > 0 and orig_h > 0:
+        asp = aspect_ratio if aspect_ratio is not None else round(orig_w / float(orig_h), 3)
+        orientation = "square" if orig_w == orig_h else ("portrait" if orig_w < orig_h else "landscape")
+        return (
+            f"[Physical Image Canvas Facts]\n"
+            f"- Native Dimensions: {orig_w} x {orig_h} px\n"
+            f"- Aspect Ratio (W/H): {asp:.3f} ({orientation})\n"
+            f"- Coordinate Space: 0.0 to 1.0 normalized\n\n"
+            f"Please deconstruct this photo into the physical canvas context, composition axis, "
+            f"saliency foci with bounding boxes, geometry tuning, and 4-color palette into strict JSON."
+        )
+    return STAGE1_USER_PROMPT
 

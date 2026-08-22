@@ -19,6 +19,7 @@ from .primitive_engine import generate_primitive_svg
 from .prompts import (
     STAGE1_SYSTEM_PROMPT,
     STAGE1_USER_PROMPT,
+    build_stage1_user_prompt,
     STAGE2_SYSTEM_PROMPT,
     build_stage2_user_prompt,
     STAGE3_FEATURES_SYSTEM_PROMPT,
@@ -58,23 +59,74 @@ def _hex_to_rgb(hex_str, default=(100, 100, 100)):
 def _extract_json_from_text(text: str) -> dict | None:
     if not text:
         return None
-    clean = re.sub(r"^```json\s*", "", text.strip())
-    clean = re.sub(r"\s*```$", "", clean)
+
+    # 1. 优先提取 ```json ... ``` 代码块
+    json_block = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if json_block:
+        candidate = json_block.group(1).strip()
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    # 2. 尝试整体解析
+    clean = text.strip()
     try:
-        return json.loads(clean)
+        parsed = json.loads(clean)
+        if isinstance(parsed, dict):
+            return parsed
     except json.JSONDecodeError:
         pass
 
-    matches = re.findall(r"\{(?:[^{}]|(?R))*\}", text, re.DOTALL)
-    for m in reversed(matches):
+    # 3. 寻找最外层的大括号范围（从第一个 { 到最后一个 }）
+    start_idx = clean.find("{")
+    end_idx = clean.rfind("}")
+    if start_idx != -1 and end_idx > start_idx:
+        candidate = clean[start_idx : end_idx + 1]
         try:
-            data = json.loads(m)
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    # 4. 括号深度扫描所有闭合的 JSON 对象候选
+    start = -1
+    depth = 0
+    in_string = False
+    escape = False
+    candidates = []
+
+    for i, char in enumerate(text):
+        if char == '"' and not escape:
+            in_string = not in_string
+        elif char == '\\' and in_string:
+            escape = not escape
+            continue
+        elif not in_string:
+            if char == '{':
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif char == '}':
+                depth -= 1
+                if depth == 0 and start != -1:
+                    candidates.append(text[start : i + 1])
+                    start = -1
+        escape = False
+
+    for c in reversed(candidates):
+        try:
+            data = json.loads(c)
             if isinstance(data, dict) and (
                 "title" in data or "svg" in data or "spatial_structure" in data or "scene_type" in data or "saliency_foci" in data or "kandinsky_elemental_grammar" in data or "hero_label" in data
             ):
                 return data
         except json.JSONDecodeError:
             continue
+
     return None
 
 
@@ -97,6 +149,64 @@ def _extract_svg_code(text: str, data: dict | None = None) -> str | None:
         return direct_match.group(0).strip()
 
     return None
+
+
+def _extract_curatorial_fallback_from_text(s2_raw: str, s2_think: str) -> dict:
+    """
+    当 Stage 2 JSON 结构解析为空时，从思考链或原始响应中智能兜底提取画廊标题与副标
+    """
+    combined = f"{s2_raw}\n\n{s2_think}".strip()
+    if not combined:
+        return {}
+
+    title = ""
+    subtitle = ""
+
+    # 1. 尝试匹配 JSON 字段模式 "title": "..."
+    t_match = re.search(r'"title"\s*:\s*"([^"]{2,50})"', combined)
+    if t_match:
+        title = t_match.group(1).strip().upper()
+    s_match = re.search(r'"subtitle"\s*:\s*"([^"]{3,80})"', combined)
+    if s_match:
+        subtitle = s_match.group(1).strip()
+
+    # 2. 尝试从思考链结论中匹配 Title: **...** 或 Title: ...
+    if not title:
+        m = re.search(r'(?:Title|title|TITLE)\s*:\s*(?:\*\*)?([A-Za-z\s&,–—\'-]{3,40})(?:\*\*)?', combined)
+        if m:
+            t = m.group(1).strip().strip('"').strip("'")
+            if len(t.split()) <= 6:
+                title = t.upper()
+
+    if not title:
+        m = re.search(r'(?:think|believe|select|choose)\s+[\'"]([A-Za-z\s&,–—\'-]{3,40})[\'"]\s+is\s+the\s+(?:best|strongest|chosen|winning|final)\s+title', combined, re.IGNORECASE)
+        if m:
+            t = m.group(1).strip()
+            if len(t.split()) <= 6:
+                title = t.upper()
+
+    if not subtitle:
+        m = re.search(r'(?:Subtitle|subtitle|SUBTITLE)\s*:\s*(?:\*|\")?([A-Za-z\s,–—\'-]{4,70})(?:\*|\")?', combined)
+        if m:
+            s = m.group(1).strip().strip('"').strip("'")
+            if len(s.split()) <= 10:
+                subtitle = s
+
+    # 3. 尝试匹配 Option A/B/C: [Title] | [Subtitle] 格式
+    if not title or not subtitle:
+        opt_match = re.search(r'Option\s+[A-C][^:]*:\s*([A-Za-z\s&,–—\'-]{3,40})\s*\|\s*([A-Za-z\s,–—\'-]{4,70})', combined)
+        if opt_match:
+            if not title:
+                title = opt_match.group(1).strip().upper()
+            if not subtitle:
+                subtitle = opt_match.group(2).strip()
+
+    res = {}
+    if title:
+        res["title"] = title
+    if subtitle:
+        res["subtitle"] = subtitle
+    return res
 
 
 def _save_debug_file(debug_dir: Path | str | None, filename: str, content: str | bytes | dict | list):
@@ -226,6 +336,50 @@ class MultiStageVisionPipeline:
         self.vlm_cfg = vlm_cfg or {}
         self.provider_name = self.vlm_cfg.get("provider", "mlx")
 
+    def _get_stage_options(self, stage_name: str) -> dict:
+        """从配置中提取指定阶段的思考级别与推理参数配置 (Stage-specific Reasoning Options)"""
+        thinking_cfg = self.vlm_cfg.get("thinking", {})
+        is_enabled = thinking_cfg.get("enable", True)
+        is_default = bool(thinking_cfg.get("isDefault", thinking_cfg.get("is_default", False)))
+
+        if is_default:
+            # 极简模式：完全使用服务端默认 AI 调参（仅传递 Prompt、图片并开启自动思考）
+            return {
+                "level": "default",
+                "max_thinking_tokens": None,
+                "temperature": None,
+                "reasoning_effort": None,
+                "thinking_enabled": is_enabled,
+                "is_default": True,
+            }
+
+        stages = thinking_cfg.get("stages", {})
+        st_cfg = stages.get(stage_name, {})
+
+        # 默认基准策略映射
+        defaults = {
+            "stage1_spatial": {"level": "medium", "max_thinking_tokens": 1536, "temperature": 0.2, "reasoning_effort": "medium"},
+            "stage2_curatorial": {"level": "low", "max_thinking_tokens": 768, "temperature": 0.2, "reasoning_effort": "low"},
+            "stage3_art_theory": {"level": "expert", "max_thinking_tokens": 4096, "temperature": 0.4, "reasoning_effort": "high"},
+            "stage4_svg_synthesis": {"level": "medium", "max_thinking_tokens": 2048, "temperature": 0.2, "reasoning_effort": "medium"},
+            "fast_unified": {"level": "medium", "max_thinking_tokens": 2048, "temperature": 0.3, "reasoning_effort": "medium"},
+        }
+        fallback = defaults.get(stage_name, {"level": "medium", "max_thinking_tokens": 2048, "temperature": 0.2, "reasoning_effort": "medium"})
+
+        level = st_cfg.get("level", fallback["level"])
+        max_thinking = st_cfg.get("max_thinking_tokens", fallback["max_thinking_tokens"]) if is_enabled else 0
+        temp = float(st_cfg.get("temperature", fallback["temperature"]))
+        effort = st_cfg.get("reasoning_effort", fallback["reasoning_effort"]) if is_enabled else None
+
+        return {
+            "level": level,
+            "max_thinking_tokens": max_thinking,
+            "temperature": temp,
+            "reasoning_effort": effort,
+            "thinking_enabled": is_enabled,
+            "is_default": False,
+        }
+
     def run(self, img_bytes: bytes, filename: str, debug_dir=None, geo_context=None, step_callback=None) -> dict | None:
         mode = self.vlm_cfg.get("pipeline_mode", "progressive")
         if mode == "fast":
@@ -260,23 +414,62 @@ class MultiStageVisionPipeline:
             print(f"[VLM Context] 📍 注入真实地理物理事实: GPS={gps_info} | 海拔={alt_info}")
         t_total_start = time.time()
 
+        # 解析输入图片的物理尺寸与真实画幅比例
+        orig_w, orig_h, native_aspect = 1000, 1000, 1.0
+        orientation = "landscape"
+        try:
+            from PIL import Image
+            import io
+            with Image.open(io.BytesIO(img_bytes)) as _test_im:
+                orig_w, orig_h = _test_im.size
+                native_aspect = round(orig_w / float(orig_h), 3) if orig_h > 0 else 1.0
+                orientation = "square" if orig_w == orig_h else ("portrait" if orig_w < orig_h else "landscape")
+        except Exception:
+            pass
+
         # -------------------------------------------------------------------
         # Stage 1: 视觉解构与空间锚定 (带图调用) [20%]
         # -------------------------------------------------------------------
-        print(f"[VLM Stage 1/5] [20%] 🔍 正在解构空间地貌、构件与核心主体...")
+        s1_opts = self._get_stage_options("stage1_spatial")
+        if s1_opts.get("is_default"):
+            print(f"[VLM Stage 1/5] [20%] 🔍 正在解构空间地貌、构件与核心主体 (Thinking: DEFAULT | Mode: Raw AI Defaults)...")
+        else:
+            print(f"[VLM Stage 1/5] [20%] 🔍 正在解构空间地貌、构件与核心主体 (Thinking: {s1_opts['level'].upper()} | Budget: {s1_opts['max_thinking_tokens']} tok | Temp: {s1_opts['temperature']})...")
         t0 = time.time()
+        s1_base_prompt = build_stage1_user_prompt(orig_w, orig_h, native_aspect)
         s1_user_prompt = (
-            f"{STAGE1_USER_PROMPT}\n\nGeographical & Altitude Reality Context:\n{json.dumps(geo_context, ensure_ascii=False)}"
-            if geo_context else STAGE1_USER_PROMPT
+            f"{s1_base_prompt}\n\nGeographical & Altitude Reality Context:\n{json.dumps(geo_context, ensure_ascii=False)}"
+            if geo_context else s1_base_prompt
         )
-        s1_raw, s1_think = self.provider.generate(img_bytes, STAGE1_SYSTEM_PROMPT, s1_user_prompt, self.vlm_cfg)
+        s1_raw, s1_think = self.provider.generate(
+            img_bytes,
+            STAGE1_SYSTEM_PROMPT,
+            s1_user_prompt,
+            self.vlm_cfg,
+            stage_options=s1_opts,
+        )
         s1_data = _extract_json_from_text(s1_raw) or _extract_json_from_text(s1_think)
         s1_cost = time.time() - t0
+
+        if s1_data and isinstance(s1_data, dict):
+            # 保证 canvas 顶级对象物理自包含与严密自愈
+            if "canvas" not in s1_data or not isinstance(s1_data["canvas"], dict):
+                s1_data["canvas"] = {}
+            c_obj = s1_data["canvas"]
+            try:
+                parsed_asp = float(c_obj.get("aspect_ratio", 0))
+                c_obj["aspect_ratio"] = parsed_asp if 0.1 <= parsed_asp <= 10.0 else native_aspect
+            except (ValueError, TypeError):
+                c_obj["aspect_ratio"] = native_aspect
+            c_obj["orientation"] = str(c_obj.get("orientation") or orientation)
+            c_obj["width"] = int(c_obj.get("width") or orig_w)
+            c_obj["height"] = int(c_obj.get("height") or orig_h)
+            c_obj["coordinate_space"] = "normalized_uv_top_left"
 
         # Debug 记录 Stage 1 (01_stage1_...)
         _save_debug_file(debug_dir, "01_stage1_prompt_system.txt", STAGE1_SYSTEM_PROMPT)
         _save_debug_file(debug_dir, "01_stage1_prompt_user.txt", s1_user_prompt)
-        _save_debug_file(debug_dir, "01_stage1_raw_response.txt", f"=== THINKING ===\n{s1_think}\n\n=== RESPONSE ===\n{s1_raw}")
+        _save_debug_file(debug_dir, "01_stage1_raw_response.txt", f"=== THINKING ({len(s1_think)} chars) ===\n{s1_think}\n\n=== RESPONSE ===\n{s1_raw}")
         _save_debug_file(debug_dir, "01_stage1_parsed.json", s1_data or {"error": "failed to parse"})
 
         if not s1_data:
@@ -319,17 +512,31 @@ class MultiStageVisionPipeline:
         # -------------------------------------------------------------------
         # Stage 2: 文学策展与诗性标题 [40%]
         # -------------------------------------------------------------------
-        print(f"[VLM Stage 2/5] [40%] ✍️ 正在提炼画廊级英文标题与诗性副标...")
+        s2_opts = self._get_stage_options("stage2_curatorial")
+        if s2_opts.get("is_default"):
+            print(f"[VLM Stage 2/5] [40%] ✍️ 正在提炼画廊级英文标题与诗性副标 (Thinking: DEFAULT | Mode: Raw AI Defaults)...")
+        else:
+            print(f"[VLM Stage 2/5] [40%] ✍️ 正在提炼画廊级英文标题与诗性副标 (Thinking: {s2_opts['level'].upper()} | Budget: {s2_opts['max_thinking_tokens']} tok | Temp: {s2_opts['temperature']})...")
         t0 = time.time()
         s2_user_prompt = build_stage2_user_prompt(s1_data, geo_context=geo_context)
-        s2_raw, s2_think = self.provider.generate(img_bytes, STAGE2_SYSTEM_PROMPT, s2_user_prompt, self.vlm_cfg)
+        s2_raw, s2_think = self.provider.generate(
+            img_bytes,
+            STAGE2_SYSTEM_PROMPT,
+            s2_user_prompt,
+            self.vlm_cfg,
+            stage_options=s2_opts,
+        )
         s2_data = _extract_json_from_text(s2_raw) or _extract_json_from_text(s2_think) or {}
+        if not s2_data or not s2_data.get("title"):
+            fallback_s2 = _extract_curatorial_fallback_from_text(s2_raw, s2_think)
+            if fallback_s2:
+                s2_data = {**s2_data, **fallback_s2}
         s2_cost = time.time() - t0
 
         # Debug 记录 Stage 2 (02_stage2_...)
         _save_debug_file(debug_dir, "02_stage2_prompt_system.txt", STAGE2_SYSTEM_PROMPT)
         _save_debug_file(debug_dir, "02_stage2_prompt_user.txt", s2_user_prompt)
-        _save_debug_file(debug_dir, "02_stage2_raw_response.txt", f"=== THINKING ===\n{s2_think}\n\n=== RESPONSE ===\n{s2_raw}")
+        _save_debug_file(debug_dir, "02_stage2_raw_response.txt", f"=== THINKING ({len(s2_think)} chars) ===\n{s2_think}\n\n=== RESPONSE ===\n{s2_raw}")
         _save_debug_file(debug_dir, "02_stage2_parsed.json", s2_data)
 
         title = str(s2_data.get("title") or "").strip()
@@ -357,10 +564,20 @@ class MultiStageVisionPipeline:
         # -------------------------------------------------------------------
         # Stage 3: 核心主焦点艺术造型理论特征抽象 [60%]
         # -------------------------------------------------------------------
-        print(f"[VLM Stage 3/5] [60%] 🎨 正在深度解构核心主焦点艺术造型理论特征 (康定斯基/克利/塞尚/格式塔)...")
+        s3_opts = self._get_stage_options("stage3_art_theory")
+        if s3_opts.get("is_default"):
+            print(f"[VLM Stage 3/5] [60%] 🎨 正在深度解构核心主焦点艺术造型理论特征 (Thinking: DEFAULT | Mode: Raw AI Defaults)...")
+        else:
+            print(f"[VLM Stage 3/5] [60%] 🎨 正在深度解构核心主焦点艺术造型理论特征 (Thinking: {s3_opts['level'].upper()} | Budget: {s3_opts['max_thinking_tokens']} tok | Temp: {s3_opts['temperature']})...")
         t0 = time.time()
         s3_features_user_prompt = build_stage3_features_user_prompt(s1_data, s2_data, geo_context=geo_context)
-        s3_f_raw, s3_f_think = self.provider.generate(img_bytes, STAGE3_FEATURES_SYSTEM_PROMPT, s3_features_user_prompt, self.vlm_cfg)
+        s3_f_raw, s3_f_think = self.provider.generate(
+            img_bytes,
+            STAGE3_FEATURES_SYSTEM_PROMPT,
+            s3_features_user_prompt,
+            self.vlm_cfg,
+            stage_options=s3_opts,
+        )
         s3_features_data = _extract_json_from_text(s3_f_raw) or _extract_json_from_text(s3_f_think)
         s3_f_cost = time.time() - t0
 
@@ -371,7 +588,7 @@ class MultiStageVisionPipeline:
         # Debug 记录 Stage 3 特征 (03_stage3_...)
         _save_debug_file(debug_dir, "03_stage3_prompt_system.txt", STAGE3_FEATURES_SYSTEM_PROMPT)
         _save_debug_file(debug_dir, "03_stage3_prompt_user.txt", s3_features_user_prompt)
-        _save_debug_file(debug_dir, "03_stage3_raw_response.txt", f"=== THINKING ===\n{s3_f_think}\n\n=== RESPONSE ===\n{s3_f_raw}")
+        _save_debug_file(debug_dir, "03_stage3_raw_response.txt", f"=== THINKING ({len(s3_f_think)} chars) ===\n{s3_f_think}\n\n=== RESPONSE ===\n{s3_f_raw}")
         _save_debug_file(debug_dir, "03_stage3_focus_features.json", s3_features_data)
 
         concept_title = s3_features_data.get("curatorial_abstract_metaphor", {}).get("formal_concept_title", "FORMAL ABSTRACTION")
@@ -458,11 +675,21 @@ class MultiStageVisionPipeline:
                 else:
                     domain_key = "alpine_landscape"
 
+            s4_opts = self._get_stage_options("stage4_svg_synthesis")
             s4_system_prompt = build_stage4_system_prompt(domain_key)
-            print(f"│ 📐 匹配 [{domain_key}] 专属几何语法库，正在生成定制矢量 SVG...")
+            if s4_opts.get("is_default"):
+                print(f"│ 📐 匹配 [{domain_key}] 专属几何语法库，正在生成定制矢量 SVG (Thinking: DEFAULT | Mode: Raw AI Defaults)...")
+            else:
+                print(f"│ 📐 匹配 [{domain_key}] 专属几何语法库，正在生成定制矢量 SVG (Thinking: {s4_opts['level'].upper()} | Budget: {s4_opts['max_thinking_tokens']} tok)...")
             t0 = time.time()
             s4_user_prompt = build_stage4_user_prompt(s1_data, s2_data)
-            s4_raw, s4_think = self.provider.generate(img_bytes, s4_system_prompt, s4_user_prompt, self.vlm_cfg)
+            s4_raw, s4_think = self.provider.generate(
+                img_bytes,
+                s4_system_prompt,
+                s4_user_prompt,
+                self.vlm_cfg,
+                stage_options=s4_opts,
+            )
             s4_data = _extract_json_from_text(s4_raw) or _extract_json_from_text(s4_think) or {}
             s4_cost = time.time() - t0
 
@@ -474,7 +701,7 @@ class MultiStageVisionPipeline:
             # Debug 记录 Stage 4 Prompt
             _save_debug_file(debug_dir, "04_stage4_prompt_system.txt", s4_system_prompt)
             _save_debug_file(debug_dir, "04_stage4_prompt_user.txt", s4_user_prompt)
-            _save_debug_file(debug_dir, "04_stage4_raw_response.txt", f"=== THINKING ===\n{s4_think}\n\n=== RESPONSE ===\n{s4_raw}")
+            _save_debug_file(debug_dir, "04_stage4_raw_response.txt", f"=== THINKING ({len(s4_think)} chars) ===\n{s4_think}\n\n=== RESPONSE ===\n{s4_raw}")
             _save_debug_file(debug_dir, "04_stage4_artwork_final.svg", svg_code)
 
         _save_debug_file(debug_dir, "04_stage4_parsed.json", s4_data)
@@ -524,22 +751,59 @@ class MultiStageVisionPipeline:
                     )
                 )
 
+        fast_opts = self._get_stage_options("fast_unified")
         _report("[VLM Fast]", f"⚡ 启动极速模式分析 (SVG 生成): {filename}", engine=self.provider_name)
-        print(f"\n[VLM Fast] ⚡ 启动极速模式分析 (SVG 生成): {filename}")
+        if fast_opts.get("is_default"):
+            print(f"\n[VLM Fast] ⚡ 启动极速模式分析 (SVG 生成, Thinking: DEFAULT | Mode: Raw AI Defaults): {filename}")
+        else:
+            print(f"\n[VLM Fast] ⚡ 启动极速模式分析 (SVG 生成, Thinking: {fast_opts['level'].upper()} | Budget: {fast_opts['max_thinking_tokens']} tok): {filename}")
         t0 = time.time()
         fast_user_prompt = (
             f"{FAST_UNIFIED_USER_PROMPT}\n\nGeographical & Altitude Reality Context:\n{json.dumps(geo_context, ensure_ascii=False)}"
             if geo_context else FAST_UNIFIED_USER_PROMPT
         )
-        content, thinking = self.provider.generate(img_bytes, FAST_UNIFIED_SYSTEM_PROMPT, fast_user_prompt, self.vlm_cfg)
+        content, thinking = self.provider.generate(
+            img_bytes,
+            FAST_UNIFIED_SYSTEM_PROMPT,
+            fast_user_prompt,
+            self.vlm_cfg,
+            stage_options=fast_opts,
+        )
         cost = time.time() - t0
 
         data = _extract_json_from_text(content) or _extract_json_from_text(thinking)
 
+        # 解析真实图片画幅尺寸
+        orig_w, orig_h, native_aspect = 1000, 1000, 1.0
+        orientation = "landscape"
+        try:
+            from PIL import Image
+            import io
+            with Image.open(io.BytesIO(img_bytes)) as _test_im:
+                orig_w, orig_h = _test_im.size
+                native_aspect = round(orig_w / float(orig_h), 3) if orig_h > 0 else 1.0
+                orientation = "square" if orig_w == orig_h else ("portrait" if orig_w < orig_h else "landscape")
+        except Exception:
+            pass
+
+        if data and isinstance(data, dict):
+            if "canvas" not in data or not isinstance(data["canvas"], dict):
+                data["canvas"] = {}
+            c_obj = data["canvas"]
+            try:
+                parsed_asp = float(c_obj.get("aspect_ratio", 0))
+                c_obj["aspect_ratio"] = parsed_asp if 0.1 <= parsed_asp <= 10.0 else native_aspect
+            except (ValueError, TypeError):
+                c_obj["aspect_ratio"] = native_aspect
+            c_obj["orientation"] = str(c_obj.get("orientation") or orientation)
+            c_obj["width"] = int(c_obj.get("width") or orig_w)
+            c_obj["height"] = int(c_obj.get("height") or orig_h)
+            c_obj["coordinate_space"] = "normalized_uv_top_left"
+
         # Debug 记录 Fast 模式
         _save_debug_file(debug_dir, "02_fast_prompt_system.txt", FAST_UNIFIED_SYSTEM_PROMPT)
         _save_debug_file(debug_dir, "02_fast_prompt_user.txt", fast_user_prompt)
-        _save_debug_file(debug_dir, "02_fast_raw_response.txt", f"=== THINKING ===\n{thinking}\n\n=== RESPONSE ===\n{content}")
+        _save_debug_file(debug_dir, "02_fast_raw_response.txt", f"=== THINKING ({len(thinking)} chars) ===\n{thinking}\n\n=== RESPONSE ===\n{content}")
         _save_debug_file(debug_dir, "02_fast_parsed.json", data or {"error": "failed to parse"})
 
         if not data:

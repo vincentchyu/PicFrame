@@ -18,7 +18,7 @@ layouts:
     typography:
       layout_type: "split"
       separator: " · "
-      font_scale: 0.013
+      font_scale: 0.021
     ascii:
       columns: 100
       char_set: "block"
@@ -42,7 +42,7 @@ layouts:
     typography:
       layout_type: "split"
       separator: " · "
-      font_scale: 0.013
+      font_scale: 0.021
     ascii:
       columns: 100
       char_set: "block"
